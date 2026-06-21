@@ -1,0 +1,475 @@
+// FSG Work Solutions — control system schema
+// Monetary values use Float for simplicity (this is an operations portal, not a ledger).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────────────
+
+enum SubsidiaryType {
+  ONLINE_SHOP
+  FARM_LAYERS
+  FARM_BROILERS
+  FARM_CROPS
+  FARM_LIVESTOCK
+  ASSETS
+  LAND_ESTATE
+  INVESTMENTS
+}
+
+enum SubsidiaryStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MovementType {
+  IN
+  OUT
+  ADJUSTMENT
+}
+
+enum SaleChannel {
+  ONLINE
+  IN_STORE
+  WHOLESALE
+}
+
+enum BatchType {
+  LAYERS
+  BROILERS
+}
+
+enum BatchStatus {
+  ACTIVE
+  HARVESTED
+  CLOSED
+}
+
+enum CropStatus {
+  PLANNED
+  PLANTED
+  GROWING
+  HARVESTED
+}
+
+enum LivestockSex {
+  MALE
+  FEMALE
+}
+
+enum LivestockStatus {
+  ALIVE
+  SOLD
+  DECEASED
+}
+
+enum AssetCondition {
+  NEW
+  GOOD
+  FAIR
+  POOR
+}
+
+enum AssetStatus {
+  ACTIVE
+  IN_REPAIR
+  RETIRED
+  DISPOSED
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum LandStatus {
+  OWNED
+  FINANCING
+  LEASED
+}
+
+enum InvestmentType {
+  FIXED_DEPOSIT
+  BONDS
+  EQUITY
+  REAL_ESTATE
+  OTHER
+}
+
+enum InvestmentStatus {
+  ACTIVE
+  MATURED
+  WITHDRAWN
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertType {
+  LOW_STOCK
+  MAINTENANCE_DUE
+  LAND_PAYMENT_DUE
+  INVESTMENT_MATURITY
+  GENERAL
+}
+
+// ─── Access control (dynamic RBAC) ──────────────────────────────────────────
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?
+  isSystem    Boolean          @default(false)
+  users       User[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  resource    String
+  action      String
+  description String?
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id           String      @id @default(cuid())
+  name         String
+  email        String      @unique
+  passwordHash String
+  roleId       String?
+  role         Role?       @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  subsidiaryId String?
+  subsidiary   Subsidiary? @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  movements InventoryMovement[]
+  sales     Sale[]
+
+  @@map("users")
+}
+
+// ─── Business tables ────────────────────────────────────────────────────────
+
+model Subsidiary {
+  id          String           @id @default(cuid())
+  name        String
+  type        SubsidiaryType
+  status      SubsidiaryStatus @default(ACTIVE)
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  users       User[]
+  products    Product[]
+  sales       Sale[]
+  farmBatches FarmBatch[]
+  crops       Crop[]
+  livestock   Livestock[]
+  assets      Asset[]
+
+  @@map("subsidiaries")
+}
+
+model Product {
+  id             String      @id @default(cuid())
+  subsidiaryId   String?
+  subsidiary     Subsidiary? @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  name           String
+  sku            String?     @unique
+  category       String?
+  description    String?
+  unitPrice      Float       @default(0)
+  costPrice      Float       @default(0)
+  quantityOnHand Int         @default(0)
+  reorderLevel   Int         @default(0)
+  imageUrl       String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  movements InventoryMovement[]
+  sales     Sale[]
+
+  @@map("products")
+}
+
+model InventoryMovement {
+  id          String       @id @default(cuid())
+  productId   String
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type        MovementType
+  quantity    Int
+  unitCost    Float?
+  reference   String?
+  note        String?
+  receiptUrl  String?
+  occurredAt  DateTime     @default(now())
+  createdById String?
+  createdBy   User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime     @default(now())
+
+  @@index([productId])
+  @@map("inventory_movements")
+}
+
+model Sale {
+  id           String      @id @default(cuid())
+  subsidiaryId String?
+  subsidiary   Subsidiary? @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  productId    String?
+  product      Product?    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  quantity     Int
+  unitPrice    Float
+  totalAmount  Float
+  channel      SaleChannel @default(ONLINE)
+  customer     String?
+  soldAt       DateTime    @default(now())
+  createdById  String?
+  createdBy    User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime    @default(now())
+
+  @@index([soldAt])
+  @@map("sales")
+}
+
+model FarmBatch {
+  id              String      @id @default(cuid())
+  subsidiaryId    String?
+  subsidiary      Subsidiary? @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  name            String
+  type            BatchType
+  breed           String?
+  initialCount    Int
+  startDate       DateTime
+  expectedHarvest DateTime?
+  status          BatchStatus @default(ACTIVE)
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  eggProduction    EggProduction[]
+  mortalityRecords MortalityRecord[]
+  feedRecords      FeedRecord[]
+
+  @@map("farm_batches")
+}
+
+model EggProduction {
+  id             String    @id @default(cuid())
+  batchId        String
+  batch          FarmBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  date           DateTime
+  traysCollected Int       @default(0)
+  eggsCollected  Int       @default(0)
+  damaged        Int       @default(0)
+  gradeA         Int       @default(0)
+  gradeB         Int       @default(0)
+  createdAt      DateTime  @default(now())
+
+  @@index([batchId])
+  @@index([date])
+  @@map("egg_production")
+}
+
+model MortalityRecord {
+  id        String    @id @default(cuid())
+  batchId   String
+  batch     FarmBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  date      DateTime
+  count     Int
+  cause     String?
+  createdAt DateTime  @default(now())
+
+  @@index([batchId])
+  @@map("mortality_records")
+}
+
+model FeedRecord {
+  id         String    @id @default(cuid())
+  batchId    String
+  batch      FarmBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  date       DateTime
+  feedType   String?
+  quantityKg Float     @default(0)
+  cost       Float     @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@index([batchId])
+  @@map("feed_records")
+}
+
+model Crop {
+  id              String      @id @default(cuid())
+  subsidiaryId    String?
+  subsidiary      Subsidiary? @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  name            String
+  variety         String?
+  plot            String?
+  areaHectares    Float       @default(0)
+  plantingDate    DateTime?
+  expectedHarvest DateTime?
+  expectedYield   Float?
+  actualYield     Float?
+  status          CropStatus  @default(PLANNED)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("crops")
+}
+
+model Livestock {
+  id              String          @id @default(cuid())
+  subsidiaryId    String?
+  subsidiary      Subsidiary?     @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  species         String
+  tagNumber       String?
+  breed           String?
+  sex             LivestockSex?
+  dob             DateTime?
+  acquisitionCost Float?
+  weightKg        Float?
+  status          LivestockStatus @default(ALIVE)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@map("livestock")
+}
+
+model Asset {
+  id           String         @id @default(cuid())
+  subsidiaryId String?
+  subsidiary   Subsidiary?    @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  name         String
+  category     String?
+  serialNumber String?
+  purchaseDate DateTime?
+  purchaseCost Float          @default(0)
+  currentValue Float          @default(0)
+  condition    AssetCondition @default(GOOD)
+  location     String?
+  imageUrl     String?
+  status       AssetStatus    @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  maintenanceLogs MaintenanceLog[]
+
+  @@map("assets")
+}
+
+model MaintenanceLog {
+  id            String            @id @default(cuid())
+  assetId       String
+  asset         Asset             @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  type          String?
+  scheduledDate DateTime
+  completedDate DateTime?
+  cost          Float             @default(0)
+  vendor        String?
+  status        MaintenanceStatus @default(SCHEDULED)
+  note          String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([assetId])
+  @@index([scheduledDate])
+  @@map("maintenance_logs")
+}
+
+model LandPlot {
+  id              String     @id @default(cuid())
+  name            String
+  location        String?
+  sizeAcres       Float      @default(0)
+  purchasePrice   Float      @default(0)
+  totalDue        Float      @default(0)
+  titleDocUrl     String?
+  acquisitionDate DateTime?
+  status          LandStatus @default(OWNED)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  payments LandPayment[]
+
+  @@map("land_plots")
+}
+
+model LandPayment {
+  id        String   @id @default(cuid())
+  plotId    String
+  plot      LandPlot @relation(fields: [plotId], references: [id], onDelete: Cascade)
+  amount    Float
+  paidAt    DateTime @default(now())
+  method    String?
+  reference String?
+  createdAt DateTime @default(now())
+
+  @@index([plotId])
+  @@map("land_payments")
+}
+
+model Investment {
+  id             String           @id @default(cuid())
+  name           String
+  type           InvestmentType   @default(OTHER)
+  institution    String?
+  principal      Float            @default(0)
+  interestRate   Float            @default(0)
+  startDate      DateTime?
+  maturityDate   DateTime?
+  expectedReturn Float?
+  documentUrl    String?
+  status         InvestmentStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([maturityDate])
+  @@map("investments")
+}
+
+model Alert {
+  id            String        @id @default(cuid())
+  type          AlertType     @default(GENERAL)
+  severity      AlertSeverity @default(INFO)
+  title         String
+  message       String?
+  subsidiaryId  String?
+  relatedEntity String?
+  /// Stable key for auto-generated alerts (e.g. "low_stock:<productId>"); null for manual alerts.
+  sourceKey     String?       @unique
+  isRead        Boolean       @default(false)
+  isResolved    Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+
+  @@index([isResolved])
+  @@map("alerts")
+}

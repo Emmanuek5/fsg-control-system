@@ -1,0 +1,28 @@
+{
+  "name": "fsg-control-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FSG Work Solutions — multi-subsidiary management portal",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @fsg/api prisma migrate dev",
+    "db:generate": "pnpm --filter @fsg/api prisma generate",
+    "db:seed": "pnpm --filter @fsg/api db:seed",
+    "db:studio": "pnpm --filter @fsg/api prisma studio",
+    "db:reset": "pnpm --filter @fsg/api prisma migrate reset"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "turbo": "^2.3.3",
+    "typescript": "^5.6.3"
+  },
+  "packageManager": "pnpm@11.8.0",
+  "engines": {
+    "node": ">=20"
+  }
+}
