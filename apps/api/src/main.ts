@@ -21,8 +21,16 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new AllExceptionsFilter());
 
+  // Allow the configured web origin plus any local/LAN origin during dev, so the
+  // app works whether opened via localhost, 127.0.0.1, or the machine's LAN IP.
+  const localOrigin = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|(\d{1,3}\.){3}\d{1,3})(:\d+)?$/;
   app.enableCors({
-    origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000',
+    origin: (origin, callback) => {
+      if (!origin || origin === process.env.WEB_ORIGIN || localOrigin.test(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
   });
 
