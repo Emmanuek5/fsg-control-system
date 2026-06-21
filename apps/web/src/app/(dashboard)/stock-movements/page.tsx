@@ -41,7 +41,7 @@ interface Movement {
   note: string | null;
   receiptUrl: string | null;
   occurredAt: string;
-  product: { id: string; name: string; sku: string | null } | null;
+  product: { id: string; name: string; sku: string | null; unit: string } | null;
   createdBy: { id: string; name: string } | null;
 }
 
@@ -76,7 +76,14 @@ export default function StockMovementsPage() {
       ),
     },
     { header: 'Type', cell: (m) => <Badge variant={typeVariant[m.type]}>{m.type}</Badge> },
-    { header: 'Qty', cell: (m) => num(m.quantity) },
+    {
+      header: 'Qty',
+      cell: (m) => (
+        <span>
+          {num(m.quantity)} <span className="text-muted-foreground">{m.product?.unit ?? ''}</span>
+        </span>
+      ),
+    },
     { header: 'Unit cost', cell: (m) => (m.unitCost != null ? naira(m.unitCost) : '—') },
     { header: 'Reference', cell: (m) => m.reference ?? '—' },
     { header: 'By', cell: (m) => m.createdBy?.name ?? '—' },

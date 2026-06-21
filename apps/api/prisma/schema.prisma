@@ -208,6 +208,8 @@ model Product {
   sku            String?     @unique
   category       String?
   description    String?
+  /// Unit of measure for stock & pricing, e.g. "pcs", "kg", "crate", "bag".
+  unit           String      @default("pcs")
   unitPrice      Float       @default(0)
   costPrice      Float       @default(0)
   quantityOnHand Int         @default(0)

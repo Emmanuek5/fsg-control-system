@@ -37,6 +37,7 @@ export class ProductsService {
         sku: dto.sku ?? null,
         category: dto.category ?? null,
         description: dto.description ?? null,
+        unit: dto.unit ?? 'pcs',
         unitPrice: dto.unitPrice,
         costPrice: dto.costPrice,
         quantityOnHand: dto.quantityOnHand ?? 0,

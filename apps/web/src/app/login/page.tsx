@@ -13,8 +13,8 @@ import { Label } from '@/components/ui/label';
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState('admin@fsg.local');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
@@ -71,12 +71,6 @@ export default function LoginPage() {
             Sign in
           </Button>
         </form>
-
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          Seeded: admin@fsg.local · manager@fsg.local · staff@fsg.local
-          <br />
-          password: <span className="font-medium">password123</span>
-        </p>
       </div>
     </div>
   );

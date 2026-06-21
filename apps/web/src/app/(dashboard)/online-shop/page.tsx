@@ -35,6 +35,7 @@ interface Product {
   sku: string | null;
   category: string | null;
   description: string | null;
+  unit: string;
   unitPrice: number;
   costPrice: number;
   quantityOnHand: number;
@@ -87,13 +88,20 @@ export default function OnlineShopPage() {
       ),
     },
     { header: 'Category', cell: (p) => p.category ?? '—' },
-    { header: 'Price', cell: (p) => naira(p.unitPrice) },
+    {
+      header: 'Price',
+      cell: (p) => (
+        <span>
+          {naira(p.unitPrice)} <span className="text-xs text-muted-foreground">/ {p.unit}</span>
+        </span>
+      ),
+    },
     { header: 'Cost', cell: (p) => naira(p.costPrice) },
     {
       header: 'In stock',
       cell: (p) => (
         <span className="flex items-center gap-2">
-          {num(p.quantityOnHand)}
+          {num(p.quantityOnHand)} <span className="text-muted-foreground">{p.unit}</span>
           {p.quantityOnHand <= p.reorderLevel && <Badge variant="warning">Low</Badge>}
         </span>
       ),
@@ -143,6 +151,7 @@ export default function OnlineShopPage() {
             { header: 'Name', value: (p) => p.name },
             { header: 'SKU', value: (p) => p.sku },
             { header: 'Category', value: (p) => p.category },
+            { header: 'Unit', value: (p) => p.unit },
             { header: 'Unit price', value: (p) => p.unitPrice },
             { header: 'Cost price', value: (p) => p.costPrice },
             { header: 'In stock', value: (p) => p.quantityOnHand },
@@ -197,6 +206,7 @@ function ProductDialog({
     name: product?.name ?? '',
     sku: product?.sku ?? '',
     category: product?.category ?? '',
+    unit: product?.unit ?? 'pcs',
     unitPrice: String(product?.unitPrice ?? ''),
     costPrice: String(product?.costPrice ?? ''),
     quantityOnHand: String(product?.quantityOnHand ?? '0'),
@@ -211,6 +221,7 @@ function ProductDialog({
         name: form.name,
         sku: form.sku || null,
         category: form.category || null,
+        unit: form.unit || 'pcs',
         unitPrice: Number(form.unitPrice || 0),
         costPrice: Number(form.costPrice || 0),
         quantityOnHand: Number(form.quantityOnHand || 0),
@@ -249,6 +260,14 @@ function ProductDialog({
           <div className="space-y-1.5">
             <Label>Category</Label>
             <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Unit of measure</Label>
+            <Input
+              value={form.unit}
+              onChange={(e) => setForm({ ...form, unit: e.target.value })}
+              placeholder="e.g. pcs, kg, crate, bag"
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Selling price (₦)</Label>

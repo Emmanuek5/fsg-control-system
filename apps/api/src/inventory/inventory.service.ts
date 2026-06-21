@@ -12,7 +12,7 @@ export class InventoryService {
       orderBy: { occurredAt: 'desc' },
       take: 200,
       include: {
-        product: { select: { id: true, name: true, sku: true } },
+        product: { select: { id: true, name: true, sku: true, unit: true } },
         createdBy: { select: { id: true, name: true } },
       },
     });

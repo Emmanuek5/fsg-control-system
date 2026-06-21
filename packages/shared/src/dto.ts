@@ -95,6 +95,7 @@ export const createProductSchema = z.object({
   sku: z.string().max(60).optional().nullable(),
   category: z.string().max(80).optional().nullable(),
   description: z.string().max(500).optional().nullable(),
+  unit: z.string().min(1).max(20).default('pcs'),
   unitPrice: z.coerce.number().nonnegative(),
   costPrice: z.coerce.number().nonnegative(),
   quantityOnHand: z.coerce.number().int().nonnegative().default(0),
