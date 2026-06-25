@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -20,6 +20,9 @@ import { AssetsModule } from './assets/assets.module';
 import { LandModule } from './land/land.module';
 import { InvestmentsModule } from './investments/investments.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { ExpensesModule } from './expenses/expenses.module';
+import { AuditModule } from './audit/audit.module';
+import { AuditInterceptor } from './audit/audit.interceptor';
 
 @Module({
   imports: [
@@ -41,11 +44,14 @@ import { AlertsModule } from './alerts/alerts.module';
     LandModule,
     InvestmentsModule,
     AlertsModule,
+    ExpensesModule,
+    AuditModule,
   ],
   providers: [
     // Order matters: authenticate first, then authorize by permission.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })
 export class AppModule {}

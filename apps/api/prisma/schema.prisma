@@ -123,6 +123,20 @@ enum AlertType {
   GENERAL
 }
 
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+enum CropInputType {
+  SEED
+  FERTILIZER
+  HERBICIDE
+  PESTICIDE
+  OTHER
+}
+
 // ─── Access control (dynamic RBAC) ──────────────────────────────────────────
 
 model Role {
@@ -174,6 +188,8 @@ model User {
 
   movements InventoryMovement[]
   sales     Sale[]
+  expenses  Expense[]
+  auditLogs AuditLog[]
 
   @@map("users")
 }
@@ -196,6 +212,7 @@ model Subsidiary {
   crops       Crop[]
   livestock   Livestock[]
   assets      Asset[]
+  expenses    Expense[]
 
   @@map("subsidiaries")
 }
@@ -345,6 +362,9 @@ model Crop {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
+  inputs    CropInput[]
+  rotations CropRotation[]
+
   @@map("crops")
 }
 
@@ -474,4 +494,71 @@ model Alert {
 
   @@index([isResolved])
   @@map("alerts")
+}
+
+model Expense {
+  id           String      @id @default(cuid())
+  subsidiaryId String?
+  subsidiary   Subsidiary? @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  category     String
+  description  String?
+  vendor       String?
+  amount       Float
+  incurredAt   DateTime    @default(now())
+  receiptUrl   String?
+  createdById  String?
+  createdBy    User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime    @default(now())
+
+  @@index([subsidiaryId])
+  @@index([incurredAt])
+  @@index([category])
+  @@map("expenses")
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  actorId    String?
+  actor      User?       @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorEmail String?
+  action     AuditAction
+  entity     String
+  entityId   String?
+  summary    String
+  createdAt  DateTime    @default(now())
+
+  @@index([createdAt])
+  @@index([entity])
+  @@map("audit_logs")
+}
+
+model CropInput {
+  id        String        @id @default(cuid())
+  cropId    String
+  crop      Crop          @relation(fields: [cropId], references: [id], onDelete: Cascade)
+  type      CropInputType @default(SEED)
+  name      String
+  quantity  Float?
+  unit      String?
+  cost      Float         @default(0)
+  date      DateTime
+  notes     String?
+  createdAt DateTime      @default(now())
+
+  @@index([cropId])
+  @@map("crop_inputs")
+}
+
+model CropRotation {
+  id        String    @id @default(cuid())
+  cropId    String
+  crop      Crop      @relation(fields: [cropId], references: [id], onDelete: Cascade)
+  season    String
+  cropName  String
+  date      DateTime?
+  notes     String?
+  createdAt DateTime  @default(now())
+
+  @@index([cropId])
+  @@map("crop_rotations")
 }

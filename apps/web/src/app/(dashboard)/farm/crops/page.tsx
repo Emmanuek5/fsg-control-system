@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -74,7 +75,9 @@ export default function CropsPage() {
       header: 'Crop',
       cell: (c) => (
         <div>
-          <div className="font-medium">{c.name}</div>
+          <Link href={`/farm/crops/${c.id}`} className="font-medium text-primary hover:underline">
+            {c.name}
+          </Link>
           <div className="text-xs text-muted-foreground">{c.variety ?? '—'}</div>
         </div>
       ),

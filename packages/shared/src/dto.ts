@@ -6,6 +6,7 @@ import {
   assetStatusSchema,
   batchStatusSchema,
   batchTypeSchema,
+  cropInputTypeSchema,
   cropStatusSchema,
   investmentStatusSchema,
   investmentTypeSchema,
@@ -197,6 +198,27 @@ export type CreateCropDto = z.infer<typeof createCropSchema>;
 export const updateCropSchema = createCropSchema.partial();
 export type UpdateCropDto = z.infer<typeof updateCropSchema>;
 
+export const createCropInputSchema = z.object({
+  cropId: z.string().min(1),
+  type: cropInputTypeSchema.default('SEED'),
+  name: z.string().min(1).max(160),
+  quantity: z.coerce.number().nonnegative().optional().nullable(),
+  unit: z.string().max(20).optional().nullable(),
+  cost: z.coerce.number().nonnegative().optional(),
+  date: z.coerce.date(),
+  notes: z.string().max(300).optional().nullable(),
+});
+export type CreateCropInputDto = z.infer<typeof createCropInputSchema>;
+
+export const createCropRotationSchema = z.object({
+  cropId: z.string().min(1),
+  season: z.string().min(1).max(60),
+  cropName: z.string().min(1).max(120),
+  date: z.coerce.date().optional().nullable(),
+  notes: z.string().max(300).optional().nullable(),
+});
+export type CreateCropRotationDto = z.infer<typeof createCropRotationSchema>;
+
 // ─── Livestock ────────────────────────────────────────────────────────────
 
 export const createLivestockSchema = z.object({
@@ -312,3 +334,19 @@ export const updateAlertSchema = z.object({
   message: z.string().max(500).optional().nullable(),
 });
 export type UpdateAlertDto = z.infer<typeof updateAlertSchema>;
+
+// ─── Expenses ───────────────────────────────────────────────────────────────
+
+export const createExpenseSchema = z.object({
+  subsidiaryId: z.string().optional().nullable(),
+  category: z.string().min(1).max(60),
+  description: z.string().max(300).optional().nullable(),
+  vendor: z.string().max(120).optional().nullable(),
+  amount: z.coerce.number().positive(),
+  incurredAt: z.coerce.date().optional(),
+  receiptUrl: z.string().max(500).optional().nullable(),
+});
+export type CreateExpenseDto = z.infer<typeof createExpenseSchema>;
+
+export const updateExpenseSchema = createExpenseSchema.partial();
+export type UpdateExpenseDto = z.infer<typeof updateExpenseSchema>;

@@ -149,3 +149,21 @@ export const AlertType = {
 } as const;
 export type AlertType = (typeof AlertType)[keyof typeof AlertType];
 export const alertTypeSchema = z.nativeEnum(AlertType);
+
+export const AuditAction = {
+  CREATE: 'CREATE',
+  UPDATE: 'UPDATE',
+  DELETE: 'DELETE',
+} as const;
+export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
+export const auditActionSchema = z.nativeEnum(AuditAction);
+
+export const CropInputType = {
+  SEED: 'SEED',
+  FERTILIZER: 'FERTILIZER',
+  HERBICIDE: 'HERBICIDE',
+  PESTICIDE: 'PESTICIDE',
+  OTHER: 'OTHER',
+} as const;
+export type CropInputType = (typeof CropInputType)[keyof typeof CropInputType];
+export const cropInputTypeSchema = z.nativeEnum(CropInputType);

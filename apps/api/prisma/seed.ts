@@ -340,6 +340,20 @@ async function seedBusinessData() {
         'Operational alerts for low stock, overdue maintenance, outstanding land balances and maturing investments are generated automatically.',
     },
   });
+
+  // ─── Expenses (across zones) ─────────────────────────────────────────────
+  await prisma.expense.createMany({
+    data: [
+      { subsidiaryId: layers.id, category: 'Feed', description: 'Layer mash', vendor: 'AgroFeeds', amount: 154000, incurredAt: daysAgo(7) },
+      { subsidiaryId: broilers.id, category: 'Feed', description: 'Broiler finisher', vendor: 'AgroFeeds', amount: 230000, incurredAt: daysAgo(4) },
+      { subsidiaryId: assetsDiv.id, category: 'Fuel', description: 'Diesel for generator', vendor: 'TotalEnergies', amount: 85000, incurredAt: daysAgo(3) },
+      { subsidiaryId: assetsDiv.id, category: 'Fuel', description: 'Diesel for delivery truck', vendor: 'TotalEnergies', amount: 60000, incurredAt: daysAgo(1) },
+      { subsidiaryId: shop.id, category: 'Utilities', description: 'Electricity bill', vendor: 'IKEDC', amount: 42000, incurredAt: daysAgo(10) },
+      { subsidiaryId: livestockDiv.id, category: 'Veterinary', description: 'Vaccinations & vet visit', vendor: 'VetCare', amount: 38000, incurredAt: daysAgo(6) },
+      { subsidiaryId: cropsDiv.id, category: 'Supplies', description: 'Fertilizer & seedlings', vendor: 'GreenGrow', amount: 95000, incurredAt: daysAgo(12) },
+      { category: 'Salaries', description: 'Casual labour wages', amount: 120000, incurredAt: daysAgo(2) },
+    ],
+  });
 }
 
 async function main() {

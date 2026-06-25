@@ -8,6 +8,8 @@ import {
   Egg,
   LayoutDashboard,
   Map,
+  Receipt,
+  ScrollText,
   Settings,
   ShieldCheck,
   ShoppingCart,
@@ -39,6 +41,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: 'Online Shop', href: '/online-shop', icon: ShoppingCart, permission: ['products:read'] },
       { label: 'Stock Movements', href: '/stock-movements', icon: ArrowLeftRight, permission: ['inventory:read'] },
+      { label: 'Expenses', href: '/expenses', icon: Receipt, permission: ['expenses:read'] },
     ],
   },
   {
@@ -64,6 +67,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: 'Alerts', href: '/alerts', icon: Bell, permission: ['alerts:read'] },
       { label: 'Roles & Permissions', href: '/settings/roles', icon: ShieldCheck, permission: ['roles:read'] },
       { label: 'Users', href: '/settings/users', icon: Users, permission: ['users:read'] },
+      { label: 'Audit Log', href: '/audit', icon: ScrollText, permission: ['audit:read'] },
       { label: 'Settings', href: '/settings', icon: Settings },
     ],
   },

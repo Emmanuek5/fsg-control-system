@@ -60,6 +60,12 @@ export const PERMISSION_RESOURCES: PermissionResource[] = [
   },
   { key: 'sales', label: 'Sales', description: 'Sales transactions', actions: CRUD },
   {
+    key: 'expenses',
+    label: 'Expenses',
+    description: 'Operational expenses across zones (feed, fuel, utilities, ...)',
+    actions: CRUD,
+  },
+  {
     key: 'farm',
     label: 'Farm — Batches & Records',
     description: 'Layer/broiler batches, egg production, mortality and feed records',
@@ -109,6 +115,12 @@ export const PERMISSION_RESOURCES: PermissionResource[] = [
     label: 'Roles & Permissions',
     description: 'Create roles and edit the permissions each role has',
     actions: ['read', 'manage'],
+  },
+  {
+    key: 'audit',
+    label: 'Audit Log',
+    description: 'View the system audit trail of who changed what',
+    actions: ['read'],
   },
 ];
 
@@ -166,6 +178,7 @@ const managerPermissions: string[] = [
   ...permissionsFor('products'),
   ...permissionsFor('inventory'),
   ...permissionsFor('sales'),
+  ...permissionsFor('expenses'),
   ...permissionsFor('farm'),
   ...permissionsFor('crops'),
   ...permissionsFor('livestock'),
@@ -187,6 +200,8 @@ const staffPermissions: string[] = [
   'inventory:create',
   'sales:read',
   'sales:create',
+  'expenses:read',
+  'expenses:create',
   'farm:read',
   'farm:create',
   'farm:update',
