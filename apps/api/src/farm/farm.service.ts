@@ -7,11 +7,16 @@ import type {
   CreateMortalityDto,
   UpdateFarmBatchDto,
 } from '@fsg/shared';
+import { PermissionsService } from '../auth/permissions.service';
+import type { RequestUser } from '../common/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class FarmService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissions: PermissionsService,
+  ) {}
 
   async listBatches(type?: BatchType) {
     const batches = await this.prisma.farmBatch.findMany({
@@ -29,7 +34,7 @@ export class FarmService {
     });
   }
 
-  async getBatch(id: string) {
+  async getBatch(user: RequestUser, id: string) {
     const batch = await this.prisma.farmBatch.findUniqueOrThrow({
       where: { id },
       include: {
@@ -42,8 +47,13 @@ export class FarmService {
     const mortalityTotal = batch.mortalityRecords.reduce((s, r) => s + r.count, 0);
     const totalEggs = batch.eggProduction.reduce((s, r) => s + r.eggsCollected, 0);
     const totalFeedKg = batch.feedRecords.reduce((s, r) => s + r.quantityKg, 0);
+    const seesFinance = await this.permissions.roleHas(user.roleId, 'finance:read');
     return {
       ...batch,
+      feedRecords: batch.feedRecords.map((record) => ({
+        ...record,
+        cost: seesFinance ? record.cost : null,
+      })),
       mortalityTotal,
       totalEggs,
       totalFeedKg,
@@ -52,7 +62,9 @@ export class FarmService {
   }
 
   createBatch(dto: CreateFarmBatchDto) {
-    return this.prisma.farmBatch.create({ data: { ...dto, subsidiaryId: dto.subsidiaryId ?? null } });
+    return this.prisma.farmBatch.create({
+      data: { ...dto, subsidiaryId: dto.subsidiaryId ?? null },
+    });
   }
 
   updateBatch(id: string, dto: UpdateFarmBatchDto) {
@@ -78,8 +90,12 @@ export class FarmService {
     return this.prisma.mortalityRecord.create({ data: dto });
   }
 
-  listFeed(batchId: string) {
-    return this.prisma.feedRecord.findMany({ where: { batchId }, orderBy: { date: 'desc' } });
+  async listFeed(user: RequestUser, batchId: string) {
+    const [records, seesFinance] = await Promise.all([
+      this.prisma.feedRecord.findMany({ where: { batchId }, orderBy: { date: 'desc' } }),
+      this.permissions.roleHas(user.roleId, 'finance:read'),
+    ]);
+    return records.map((record) => ({ ...record, cost: seesFinance ? record.cost : null }));
   }
   createFeed(dto: CreateFeedDto) {
     return this.prisma.feedRecord.create({ data: dto });

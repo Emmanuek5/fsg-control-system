@@ -1,21 +1,33 @@
 import { Injectable } from '@nestjs/common';
 import { MovementType, type CreateMovementDto } from '@fsg/shared';
+import { PermissionsService } from '../auth/permissions.service';
+import type { RequestUser } from '../common/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class InventoryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissions: PermissionsService,
+  ) {}
 
-  list(productId?: string) {
-    return this.prisma.inventoryMovement.findMany({
-      where: productId ? { productId } : undefined,
-      orderBy: { occurredAt: 'desc' },
-      take: 200,
-      include: {
-        product: { select: { id: true, name: true, sku: true, unit: true } },
-        createdBy: { select: { id: true, name: true } },
-      },
-    });
+  async list(user: RequestUser, productId?: string) {
+    const [movements, seesFinance] = await Promise.all([
+      this.prisma.inventoryMovement.findMany({
+        where: productId ? { productId } : undefined,
+        orderBy: { occurredAt: 'desc' },
+        take: 200,
+        include: {
+          product: { select: { id: true, name: true, sku: true, unit: true } },
+          createdBy: { select: { id: true, name: true } },
+        },
+      }),
+      this.permissions.roleHas(user.roleId, 'finance:read'),
+    ]);
+    return movements.map((movement) => ({
+      ...movement,
+      unitCost: seesFinance ? movement.unitCost : null,
+    }));
   }
 
   /** Records a movement and adjusts the product's stock on hand atomically. */

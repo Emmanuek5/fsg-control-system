@@ -37,7 +37,7 @@ interface Product {
   description: string | null;
   unit: string;
   unitPrice: number;
-  costPrice: number;
+  costPrice: number | null;
   quantityOnHand: number;
   reorderLevel: number;
   imageUrl: string | null;
@@ -47,11 +47,13 @@ interface Product {
 
 export default function OnlineShopPage() {
   const { can } = useAuth();
+  const canSeeFinance = can('finance:read');
   const [search, setSearch] = useState('');
 
   const productsQ = useQuery({
     queryKey: ['products', search],
-    queryFn: () => api.get<Product[]>(`/products${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+    queryFn: () =>
+      api.get<Product[]>(`/products${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   });
   const subsQ = useQuery({
     queryKey: ['subsidiaries'],
@@ -76,7 +78,11 @@ export default function OnlineShopPage() {
         <div className="flex items-center gap-3">
           {p.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={fileUrl(p.imageUrl)} alt="" className="size-9 rounded-md border object-cover" />
+            <img
+              src={fileUrl(p.imageUrl)}
+              alt=""
+              className="size-9 rounded-md border object-cover"
+            />
           ) : (
             <div className="size-9 rounded-md border bg-muted" />
           )}
@@ -96,7 +102,14 @@ export default function OnlineShopPage() {
         </span>
       ),
     },
-    { header: 'Cost', cell: (p) => naira(p.costPrice) },
+    ...(canSeeFinance
+      ? [
+          {
+            header: 'Cost',
+            cell: (p) => (p.costPrice != null ? naira(p.costPrice) : '—'),
+          } satisfies Column<Product>,
+        ]
+      : []),
     {
       header: 'In stock',
       cell: (p) => (
@@ -153,7 +166,9 @@ export default function OnlineShopPage() {
             { header: 'Category', value: (p) => p.category },
             { header: 'Unit', value: (p) => p.unit },
             { header: 'Unit price', value: (p) => p.unitPrice },
-            { header: 'Cost price', value: (p) => p.costPrice },
+            ...(canSeeFinance
+              ? [{ header: 'Cost price', value: (p: Product) => p.costPrice }]
+              : []),
             { header: 'In stock', value: (p) => p.quantityOnHand },
             { header: 'Reorder level', value: (p) => p.reorderLevel },
             { header: 'Subsidiary', value: (p) => p.subsidiary?.name },
@@ -200,6 +215,9 @@ function ProductDialog({
   subsidiaries: Subsidiary[];
   trigger: React.ReactNode;
 }) {
+  const { can } = useAuth();
+  const canSeeFinance = can('finance:read');
+  const showCostInput = !product || canSeeFinance;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
@@ -217,18 +235,18 @@ function ProductDialog({
 
   const save = useMutation({
     mutationFn: () => {
-      const payload = {
+      const payload: Record<string, unknown> = {
         name: form.name,
         sku: form.sku || null,
         category: form.category || null,
         unit: form.unit || 'pcs',
         unitPrice: Number(form.unitPrice || 0),
-        costPrice: Number(form.costPrice || 0),
         quantityOnHand: Number(form.quantityOnHand || 0),
         reorderLevel: Number(form.reorderLevel || 0),
         subsidiaryId: form.subsidiaryId || null,
         imageUrl: form.imageUrl,
       };
+      if (showCostInput) payload.costPrice = Number(form.costPrice || 0);
       return product
         ? api.patch(`/products/${product.id}`, payload)
         : api.post('/products', payload);
@@ -259,7 +277,10 @@ function ProductDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Category</Label>
-            <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+            <Input
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Unit of measure</Label>
@@ -277,14 +298,16 @@ function ProductDialog({
               onChange={(e) => setForm({ ...form, unitPrice: e.target.value })}
             />
           </div>
-          <div className="space-y-1.5">
-            <Label>Cost price (₦)</Label>
-            <Input
-              type="number"
-              value={form.costPrice}
-              onChange={(e) => setForm({ ...form, costPrice: e.target.value })}
-            />
-          </div>
+          {showCostInput && (
+            <div className="space-y-1.5">
+              <Label>Cost price (₦)</Label>
+              <Input
+                type="number"
+                value={form.costPrice}
+                onChange={(e) => setForm({ ...form, costPrice: e.target.value })}
+              />
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label>Quantity on hand</Label>
             <Input
@@ -326,7 +349,10 @@ function ProductDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={() => save.mutate()} disabled={form.name.trim().length < 1 || save.isPending}>
+          <Button
+            onClick={() => save.mutate()}
+            disabled={form.name.trim().length < 1 || save.isPending}
+          >
             {save.isPending && <Loader2 className="size-4 animate-spin" />}
             {product ? 'Save' : 'Create'}
           </Button>

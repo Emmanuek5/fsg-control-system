@@ -1,16 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import type { CreateExpenseDto, UpdateExpenseDto } from '@fsg/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { PermissionsService } from '../auth/permissions.service';
+import type { RequestUser } from '../common/current-user.decorator';
 
 @Injectable()
 export class ExpensesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissions: PermissionsService,
+  ) {}
 
-  list(subsidiaryId?: string, category?: string) {
+  async list(user: RequestUser, subsidiaryId?: string, category?: string) {
+    // Without company-wide financial visibility, users only see their own entries.
+    const seesAll = await this.permissions.roleHas(user.roleId, 'finance:read');
     return this.prisma.expense.findMany({
       where: {
         ...(subsidiaryId ? { subsidiaryId } : {}),
         ...(category ? { category } : {}),
+        ...(seesAll ? {} : { createdById: user.id }),
       },
       orderBy: { incurredAt: 'desc' },
       take: 500,

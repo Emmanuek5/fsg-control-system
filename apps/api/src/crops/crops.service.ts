@@ -5,11 +5,16 @@ import type {
   CreateCropRotationDto,
   UpdateCropDto,
 } from '@fsg/shared';
+import { PermissionsService } from '../auth/permissions.service';
+import type { RequestUser } from '../common/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class CropsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissions: PermissionsService,
+  ) {}
 
   list() {
     return this.prisma.crop.findMany({
@@ -18,7 +23,7 @@ export class CropsService {
     });
   }
 
-  async get(id: string) {
+  async get(user: RequestUser, id: string) {
     const crop = await this.prisma.crop.findUniqueOrThrow({
       where: { id },
       include: {
@@ -27,8 +32,13 @@ export class CropsService {
         rotations: { orderBy: [{ date: 'desc' }, { createdAt: 'desc' }] },
       },
     });
-    const totalInputCost = crop.inputs.reduce((s, i) => s + i.cost, 0);
-    return { ...crop, totalInputCost };
+    const seesFinance = await this.permissions.roleHas(user.roleId, 'finance:read');
+    const totalInputCost = seesFinance ? crop.inputs.reduce((s, i) => s + i.cost, 0) : null;
+    return {
+      ...crop,
+      inputs: crop.inputs.map((input) => ({ ...input, cost: seesFinance ? input.cost : null })),
+      totalInputCost,
+    };
   }
 
   create(dto: CreateCropDto) {
@@ -46,8 +56,12 @@ export class CropsService {
 
   // ─── Inputs (seeds, fertilizer, herbicides, ...) ──────────────────────────
 
-  listInputs(cropId: string) {
-    return this.prisma.cropInput.findMany({ where: { cropId }, orderBy: { date: 'desc' } });
+  async listInputs(user: RequestUser, cropId: string) {
+    const [inputs, seesFinance] = await Promise.all([
+      this.prisma.cropInput.findMany({ where: { cropId }, orderBy: { date: 'desc' } }),
+      this.permissions.roleHas(user.roleId, 'finance:read'),
+    ]);
+    return inputs.map((input) => ({ ...input, cost: seesFinance ? input.cost : null }));
   }
 
   createInput(dto: CreateCropInputDto) {

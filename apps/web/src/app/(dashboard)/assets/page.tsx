@@ -35,8 +35,8 @@ interface Asset {
   category: string | null;
   serialNumber: string | null;
   purchaseDate: string | null;
-  purchaseCost: number;
-  currentValue: number;
+  purchaseCost: number | null;
+  currentValue: number | null;
   condition: string;
   location: string | null;
   imageUrl: string | null;
@@ -49,7 +49,7 @@ interface MaintenanceLog {
   type: string | null;
   scheduledDate: string;
   completedDate: string | null;
-  cost: number;
+  cost: number | null;
   vendor: string | null;
   status: string;
   isOverdue: boolean;
@@ -64,6 +64,7 @@ const statusVariant: Record<string, 'success' | 'warning' | 'secondary' | 'destr
 
 export default function AssetsPage() {
   const { can } = useAuth();
+  const canSeeFinance = can('finance:read');
   const qc = useQueryClient();
 
   const assetsQ = useQuery({ queryKey: ['assets'], queryFn: () => api.get<Asset[]>('/assets') });
@@ -92,8 +93,18 @@ export default function AssetsPage() {
         </div>
       ),
     },
-    { header: 'Purchase', cell: (a) => naira(a.purchaseCost) },
-    { header: 'Value', cell: (a) => naira(a.currentValue) },
+    ...(canSeeFinance
+      ? [
+          {
+            header: 'Purchase',
+            cell: (a) => (a.purchaseCost != null ? naira(a.purchaseCost) : '—'),
+          } satisfies Column<Asset>,
+          {
+            header: 'Value',
+            cell: (a) => (a.currentValue != null ? naira(a.currentValue) : '—'),
+          } satisfies Column<Asset>,
+        ]
+      : []),
     { header: 'Condition', cell: (a) => a.condition },
     {
       header: 'Status',
@@ -158,8 +169,12 @@ export default function AssetsPage() {
             { header: 'Name', value: (a) => a.name },
             { header: 'Category', value: (a) => a.category },
             { header: 'Serial', value: (a) => a.serialNumber },
-            { header: 'Purchase cost', value: (a) => a.purchaseCost },
-            { header: 'Current value', value: (a) => a.currentValue },
+            ...(canSeeFinance
+              ? [
+                  { header: 'Purchase cost', value: (a: Asset) => a.purchaseCost },
+                  { header: 'Current value', value: (a: Asset) => a.currentValue },
+                ]
+              : []),
             { header: 'Condition', value: (a) => a.condition },
             { header: 'Status', value: (a) => a.status },
             { header: 'Overdue maintenance', value: (a) => a.overdueCount },
@@ -176,7 +191,12 @@ export default function AssetsPage() {
           />
         )}
       </PageHeader>
-      <DataTable columns={columns} rows={assetsQ.data ?? []} loading={assetsQ.isLoading} empty="No assets yet." />
+      <DataTable
+        columns={columns}
+        rows={assetsQ.data ?? []}
+        loading={assetsQ.isLoading}
+        empty="No assets yet."
+      />
     </div>
   );
 }
@@ -190,6 +210,9 @@ function AssetDialog({
   subsidiaries: Subsidiary[];
   trigger: React.ReactNode;
 }) {
+  const { can } = useAuth();
+  const canSeeFinance = can('finance:read');
+  const showValueInputs = !asset || canSeeFinance;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
@@ -208,19 +231,21 @@ function AssetDialog({
 
   const save = useMutation({
     mutationFn: () => {
-      const payload = {
+      const payload: Record<string, unknown> = {
         name: form.name,
         category: form.category || null,
         serialNumber: form.serialNumber || null,
         purchaseDate: form.purchaseDate || null,
-        purchaseCost: Number(form.purchaseCost || 0),
-        currentValue: Number(form.currentValue || 0),
         condition: form.condition,
         location: form.location || null,
         status: form.status,
         subsidiaryId: form.subsidiaryId || null,
         imageUrl: form.imageUrl,
       };
+      if (showValueInputs) {
+        payload.purchaseCost = Number(form.purchaseCost || 0);
+        payload.currentValue = Number(form.currentValue || 0);
+      }
       return asset ? api.patch(`/assets/${asset.id}`, payload) : api.post('/assets', payload);
     },
     onSuccess: async () => {
@@ -245,11 +270,17 @@ function AssetDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Category</Label>
-            <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+            <Input
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Serial number</Label>
-            <Input value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} />
+            <Input
+              value={form.serialNumber}
+              onChange={(e) => setForm({ ...form, serialNumber: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Purchase date</Label>
@@ -261,7 +292,10 @@ function AssetDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Location</Label>
-            <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+            <Input
+              value={form.location}
+              onChange={(e) => setForm({ ...form, location: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Purchase cost (₦)</Label>
@@ -281,7 +315,10 @@ function AssetDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Condition</Label>
-            <Select value={form.condition} onChange={(e) => setForm({ ...form, condition: e.target.value })}>
+            <Select
+              value={form.condition}
+              onChange={(e) => setForm({ ...form, condition: e.target.value })}
+            >
               <option value="NEW">New</option>
               <option value="GOOD">Good</option>
               <option value="FAIR">Fair</option>
@@ -290,7 +327,10 @@ function AssetDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Status</Label>
-            <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+            <Select
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value })}
+            >
               <option value="ACTIVE">Active</option>
               <option value="IN_REPAIR">In repair</option>
               <option value="RETIRED">Retired</option>
@@ -322,7 +362,10 @@ function AssetDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={() => save.mutate()} disabled={form.name.trim().length < 1 || save.isPending}>
+          <Button
+            onClick={() => save.mutate()}
+            disabled={form.name.trim().length < 1 || save.isPending}
+          >
             {save.isPending && <Loader2 className="size-4 animate-spin" />}
             {asset ? 'Save' : 'Create'}
           </Button>
@@ -334,6 +377,7 @@ function AssetDialog({
 
 function MaintenanceDialog({ asset, trigger }: { asset: Asset; trigger: React.ReactNode }) {
   const { can } = useAuth();
+  const canSeeFinance = can('finance:read');
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
@@ -373,7 +417,10 @@ function MaintenanceDialog({ asset, trigger }: { asset: Asset; trigger: React.Re
 
   const complete = useMutation({
     mutationFn: (id: string) =>
-      api.patch(`/maintenance/${id}`, { status: 'COMPLETED', completedDate: toDateInput(new Date()) }),
+      api.patch(`/maintenance/${id}`, {
+        status: 'COMPLETED',
+        completedDate: toDateInput(new Date()),
+      }),
     onSuccess: async () => {
       toast.success('Marked complete');
       await invalidate();
@@ -395,7 +442,7 @@ function MaintenanceDialog({ asset, trigger }: { asset: Asset; trigger: React.Re
               <tr className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <th className="p-2">Scheduled</th>
                 <th className="p-2">Type</th>
-                <th className="p-2">Cost</th>
+                {canSeeFinance && <th className="p-2">Cost</th>}
                 <th className="p-2">Status</th>
                 <th className="p-2"></th>
               </tr>
@@ -403,13 +450,19 @@ function MaintenanceDialog({ asset, trigger }: { asset: Asset; trigger: React.Re
             <tbody>
               {logsQ.isLoading ? (
                 <tr>
-                  <td colSpan={5} className="p-4 text-center text-muted-foreground">
+                  <td
+                    colSpan={canSeeFinance ? 5 : 4}
+                    className="p-4 text-center text-muted-foreground"
+                  >
                     Loading…
                   </td>
                 </tr>
               ) : (logsQ.data?.length ?? 0) === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-4 text-center text-muted-foreground">
+                  <td
+                    colSpan={canSeeFinance ? 5 : 4}
+                    className="p-4 text-center text-muted-foreground"
+                  >
                     No maintenance logs.
                   </td>
                 </tr>
@@ -418,12 +471,16 @@ function MaintenanceDialog({ asset, trigger }: { asset: Asset; trigger: React.Re
                   <tr key={l.id} className="border-b last:border-0">
                     <td className="p-2">{fmtDate(l.scheduledDate)}</td>
                     <td className="p-2">{l.type ?? '—'}</td>
-                    <td className="p-2">{naira(l.cost)}</td>
+                    {canSeeFinance && (
+                      <td className="p-2">{l.cost != null ? naira(l.cost) : '—'}</td>
+                    )}
                     <td className="p-2">
                       {l.isOverdue ? (
                         <Badge variant="destructive">Overdue</Badge>
                       ) : (
-                        <Badge variant={l.status === 'COMPLETED' ? 'success' : 'secondary'}>{l.status}</Badge>
+                        <Badge variant={l.status === 'COMPLETED' ? 'success' : 'secondary'}>
+                          {l.status}
+                        </Badge>
                       )}
                     </td>
                     <td className="p-2 text-right">
@@ -444,7 +501,11 @@ function MaintenanceDialog({ asset, trigger }: { asset: Asset; trigger: React.Re
           <div className="grid gap-3 border-t pt-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Type</Label>
-              <Input value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} placeholder="e.g. Service" />
+              <Input
+                value={form.type}
+                onChange={(e) => setForm({ ...form, type: e.target.value })}
+                placeholder="e.g. Service"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Scheduled date</Label>
@@ -456,11 +517,18 @@ function MaintenanceDialog({ asset, trigger }: { asset: Asset; trigger: React.Re
             </div>
             <div className="space-y-1.5">
               <Label>Cost (₦)</Label>
-              <Input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} />
+              <Input
+                type="number"
+                value={form.cost}
+                onChange={(e) => setForm({ ...form, cost: e.target.value })}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Vendor</Label>
-              <Input value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} />
+              <Input
+                value={form.vendor}
+                onChange={(e) => setForm({ ...form, vendor: e.target.value })}
+              />
             </div>
             <div className="sm:col-span-2">
               <Button onClick={() => add.mutate()} disabled={add.isPending} className="w-full">

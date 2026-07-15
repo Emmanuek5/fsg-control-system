@@ -6,6 +6,7 @@ import {
   type CreateMaintenanceDto,
   type UpdateMaintenanceDto,
 } from '@fsg/shared';
+import { CurrentUser, type RequestUser } from '../common/current-user.decorator';
 import { RequirePermissions } from '../common/require-permissions.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { MaintenanceService } from './maintenance.service';
@@ -18,8 +19,8 @@ export class MaintenanceController {
 
   @Get()
   @RequirePermissions('maintenance:read')
-  list(@Query('assetId') assetId?: string) {
-    return this.maintenance.list(assetId);
+  list(@CurrentUser() user: RequestUser, @Query('assetId') assetId?: string) {
+    return this.maintenance.list(user, assetId);
   }
 
   @Post()

@@ -4,8 +4,15 @@
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@fsg/web", "start"],
+      "runtimeArgs": ["--filter", "@fsg/web", "dev"],
       "port": 3000,
+      "autoPort": false
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@fsg/api", "dev"],
+      "port": 4000,
       "autoPort": false
     }
   ]

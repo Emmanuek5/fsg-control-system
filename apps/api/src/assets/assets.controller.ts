@@ -1,6 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { createAssetSchema, updateAssetSchema, type CreateAssetDto, type UpdateAssetDto } from '@fsg/shared';
+import {
+  createAssetSchema,
+  updateAssetSchema,
+  type CreateAssetDto,
+  type UpdateAssetDto,
+} from '@fsg/shared';
+import { CurrentUser, type RequestUser } from '../common/current-user.decorator';
 import { RequirePermissions } from '../common/require-permissions.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AssetsService } from './assets.service';
@@ -13,14 +19,14 @@ export class AssetsController {
 
   @Get()
   @RequirePermissions('assets:read')
-  list() {
-    return this.assets.list();
+  list(@CurrentUser() user: RequestUser) {
+    return this.assets.list(user);
   }
 
   @Get(':id')
   @RequirePermissions('assets:read')
-  get(@Param('id') id: string) {
-    return this.assets.getAsset(id);
+  get(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.assets.getAsset(user, id);
   }
 
   @Post()
@@ -31,7 +37,10 @@ export class AssetsController {
 
   @Patch(':id')
   @RequirePermissions('assets:update')
-  update(@Param('id') id: string, @Body(new ZodValidationPipe(updateAssetSchema)) dto: UpdateAssetDto) {
+  update(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateAssetSchema)) dto: UpdateAssetDto,
+  ) {
     return this.assets.update(id, dto);
   }
 

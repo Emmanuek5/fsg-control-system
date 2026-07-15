@@ -48,9 +48,13 @@ const statusVariant: Record<string, 'success' | 'secondary' | 'destructive'> = {
 
 export default function LivestockPage() {
   const { can } = useAuth();
+  const canSeeFinance = can('finance:read');
   const qc = useQueryClient();
 
-  const animalsQ = useQuery({ queryKey: ['livestock'], queryFn: () => api.get<Animal[]>('/livestock') });
+  const animalsQ = useQuery({
+    queryKey: ['livestock'],
+    queryFn: () => api.get<Animal[]>('/livestock'),
+  });
   const subsQ = useQuery({
     queryKey: ['subsidiaries'],
     queryFn: () => api.get<Subsidiary[]>('/subsidiaries'),
@@ -79,8 +83,18 @@ export default function LivestockPage() {
     { header: 'Breed', cell: (a) => a.breed ?? '—' },
     { header: 'Sex', cell: (a) => a.sex ?? '—' },
     { header: 'Weight (kg)', cell: (a) => (a.weightKg != null ? num(a.weightKg) : '—') },
-    { header: 'Cost', cell: (a) => (a.acquisitionCost != null ? naira(a.acquisitionCost) : '—') },
-    { header: 'Status', cell: (a) => <Badge variant={statusVariant[a.status] ?? 'secondary'}>{a.status}</Badge> },
+    ...(canSeeFinance
+      ? [
+          {
+            header: 'Cost',
+            cell: (a) => (a.acquisitionCost != null ? naira(a.acquisitionCost) : '—'),
+          } satisfies Column<Animal>,
+        ]
+      : []),
+    {
+      header: 'Status',
+      cell: (a) => <Badge variant={statusVariant[a.status] ?? 'secondary'}>{a.status}</Badge>,
+    },
     {
       header: '',
       className: 'text-right',
@@ -127,7 +141,9 @@ export default function LivestockPage() {
             { header: 'Breed', value: (a) => a.breed },
             { header: 'Sex', value: (a) => a.sex },
             { header: 'Weight (kg)', value: (a) => a.weightKg },
-            { header: 'Acquisition cost', value: (a) => a.acquisitionCost },
+            ...(canSeeFinance
+              ? [{ header: 'Acquisition cost', value: (a: Animal) => a.acquisitionCost }]
+              : []),
             { header: 'Status', value: (a) => a.status },
           ]}
         />
@@ -142,7 +158,12 @@ export default function LivestockPage() {
           />
         )}
       </PageHeader>
-      <DataTable columns={columns} rows={animalsQ.data ?? []} loading={animalsQ.isLoading} empty="No livestock yet." />
+      <DataTable
+        columns={columns}
+        rows={animalsQ.data ?? []}
+        loading={animalsQ.isLoading}
+        empty="No livestock yet."
+      />
     </div>
   );
 }
@@ -181,7 +202,9 @@ function AnimalDialog({
         status: form.status,
         subsidiaryId: form.subsidiaryId || null,
       };
-      return animal ? api.patch(`/livestock/${animal.id}`, payload) : api.post('/livestock', payload);
+      return animal
+        ? api.patch(`/livestock/${animal.id}`, payload)
+        : api.post('/livestock', payload);
     },
     onSuccess: async () => {
       toast.success(animal ? 'Animal updated' : 'Animal added');
@@ -201,15 +224,24 @@ function AnimalDialog({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Species</Label>
-            <Input value={form.species} onChange={(e) => setForm({ ...form, species: e.target.value })} />
+            <Input
+              value={form.species}
+              onChange={(e) => setForm({ ...form, species: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Tag number</Label>
-            <Input value={form.tagNumber} onChange={(e) => setForm({ ...form, tagNumber: e.target.value })} />
+            <Input
+              value={form.tagNumber}
+              onChange={(e) => setForm({ ...form, tagNumber: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Breed</Label>
-            <Input value={form.breed} onChange={(e) => setForm({ ...form, breed: e.target.value })} />
+            <Input
+              value={form.breed}
+              onChange={(e) => setForm({ ...form, breed: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Sex</Label>
@@ -237,7 +269,10 @@ function AnimalDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Status</Label>
-            <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+            <Select
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value })}
+            >
               <option value="ALIVE">Alive</option>
               <option value="SOLD">Sold</option>
               <option value="DECEASED">Deceased</option>
@@ -259,7 +294,10 @@ function AnimalDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={() => save.mutate()} disabled={form.species.trim().length < 1 || save.isPending}>
+          <Button
+            onClick={() => save.mutate()}
+            disabled={form.species.trim().length < 1 || save.isPending}
+          >
             {save.isPending && <Loader2 className="size-4 animate-spin" />}
             {animal ? 'Save' : 'Create'}
           </Button>

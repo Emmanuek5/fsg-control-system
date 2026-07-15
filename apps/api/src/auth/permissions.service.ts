@@ -26,6 +26,13 @@ export class PermissionsService {
     return keys;
   }
 
+  /** Whether a role holds a permission key. False for users without a role. */
+  async roleHas(roleId: string | null | undefined, key: string): Promise<boolean> {
+    if (!roleId) return false;
+    const keys = await this.getRolePermissions(roleId);
+    return keys.includes(key);
+  }
+
   async getUserPermissions(userId: string): Promise<string[]> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },

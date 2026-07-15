@@ -3,37 +3,102 @@
 @tailwind utilities;
 
 @layer base {
+  /* ─── Light: warm parchment + deep leaf green + harvest gold ─────────── */
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    --background: 40 33% 97%;
+    --foreground: 160 15% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 160 15% 12%;
 
-    --primary: 221 83% 53%;
-    --primary-foreground: 0 0% 100%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 160 15% 12%;
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --primary: 152 42% 26%;
+    --primary-foreground: 40 33% 97%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --secondary: 150 12% 93%;
+    --secondary-foreground: 160 15% 15%;
 
-    --accent: 214 95% 93%;
-    --accent-foreground: 222 47% 11%;
+    --muted: 45 20% 93%;
+    --muted-foreground: 160 8% 42%;
 
-    --destructive: 0 72% 51%;
+    --accent: 150 25% 90%;
+    --accent-foreground: 152 42% 22%;
+
+    --destructive: 8 68% 48%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+    --success: 152 45% 34%;
+    --success-foreground: 0 0% 100%;
 
-    --sidebar: 222 47% 11%;
-    --sidebar-foreground: 213 31% 80%;
-    --sidebar-accent: 217 33% 20%;
+    --warning: 38 92% 44%;
+    --warning-foreground: 160 15% 12%;
 
-    --radius: 0.6rem;
+    --border: 45 15% 87%;
+    --input: 45 15% 84%;
+    --ring: 152 42% 32%;
+
+    --sidebar: 160 25% 9%;
+    --sidebar-foreground: 145 12% 72%;
+    --sidebar-accent: 158 18% 16%;
+    --sidebar-primary: 46 85% 62%;
+
+    --chart-1: 152 42% 34%;
+    --chart-2: 40 85% 52%;
+    --chart-3: 18 65% 52%;
+    --chart-4: 150 20% 60%;
+    --chart-5: 205 30% 48%;
+
+    --radius: 0.75rem;
+  }
+
+  /* ─── Dark: deep green-charcoal, brightened accents ──────────────────── */
+  .dark {
+    --background: 160 14% 7%;
+    --foreground: 40 20% 92%;
+
+    --card: 158 12% 10%;
+    --card-foreground: 40 20% 92%;
+
+    --popover: 158 12% 10%;
+    --popover-foreground: 40 20% 92%;
+
+    --primary: 152 40% 48%;
+    --primary-foreground: 160 20% 6%;
+
+    --secondary: 158 10% 15%;
+    --secondary-foreground: 40 20% 88%;
+
+    --muted: 158 10% 14%;
+    --muted-foreground: 145 8% 60%;
+
+    --accent: 156 16% 18%;
+    --accent-foreground: 150 30% 80%;
+
+    --destructive: 8 70% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 42% 50%;
+    --success-foreground: 160 20% 6%;
+
+    --warning: 42 92% 56%;
+    --warning-foreground: 160 20% 6%;
+
+    --border: 158 10% 18%;
+    --input: 158 10% 22%;
+    --ring: 152 40% 48%;
+
+    --sidebar: 160 16% 6%;
+    --sidebar-foreground: 145 10% 68%;
+    --sidebar-accent: 158 14% 13%;
+    --sidebar-primary: 46 85% 62%;
+
+    --chart-1: 152 45% 52%;
+    --chart-2: 42 90% 60%;
+    --chart-3: 18 70% 60%;
+    --chart-4: 150 18% 55%;
+    --chart-5: 205 40% 60%;
   }
 }
 
@@ -42,7 +107,11 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background font-sans text-foreground;
     font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+  /* Data-dense surfaces read better with lining, tabular figures. */
+  table, [data-numeric] {
+    font-variant-numeric: tabular-nums;
   }
 }

@@ -137,6 +137,84 @@ enum CropInputType {
   OTHER
 }
 
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  DENIED
+  NEEDS_INFO
+  CANCELLED
+}
+
+enum FinancialRequestType {
+  CASH_EXPENSE
+  BANK_TRANSFER
+  AIRTIME
+  DATA_BUNDLE
+  ELECTRICITY_BILL
+}
+
+enum PaymentProvider {
+  NONE
+  NOMBA
+  MONNIFY
+}
+
+enum ProviderStatus {
+  NOT_INITIATED
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+enum ExpensePaymentStatus {
+  PAID
+  APPROVED_NOT_PAID
+  PROCESSING
+  FAILED
+}
+
+enum StaffDepartment {
+  FARM
+  SHOP
+  HR
+  ASSETS
+  CROPS
+  LIVESTOCK
+  FINANCE
+  ADMIN
+  OTHER
+}
+
+enum StaffStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  LEFT
+}
+
+enum RequestEntityType {
+  STOCK_REQUEST
+  FINANCIAL_REQUEST
+  STAFF
+  GENERAL
+}
+
+enum NotificationType {
+  REQUEST_SUBMITTED
+  REQUEST_APPROVED
+  REQUEST_DENIED
+  NEEDS_INFO
+  REQUEST_UPDATED
+  PAYMENT_STATUS
+  GENERAL
+}
+
+enum WebhookVerificationStatus {
+  VERIFIED
+  FAILED
+  SKIPPED
+}
+
 // ─── Access control (dynamic RBAC) ──────────────────────────────────────────
 
 model Role {
@@ -190,6 +268,14 @@ model User {
   sales     Sale[]
   expenses  Expense[]
   auditLogs AuditLog[]
+  staffProfile Staff?
+  stockRequestsRequested StockRequest[] @relation("StockRequestRequester")
+  stockRequestsApproved  StockRequest[] @relation("StockRequestApprover")
+  financialRequestsRequested FinancialRequest[] @relation("FinancialRequestRequester")
+  financialRequestsApproved  FinancialRequest[] @relation("FinancialRequestApprover")
+  financialRequestsExecuted  FinancialRequest[] @relation("FinancialRequestExecutor")
+  requestComments RequestComment[]
+  notifications   Notification[]
 
   @@map("users")
 }
@@ -213,6 +299,9 @@ model Subsidiary {
   livestock   Livestock[]
   assets      Asset[]
   expenses    Expense[]
+  staff        Staff[]
+  stockRequests     StockRequest[]
+  financialRequests FinancialRequest[]
 
   @@map("subsidiaries")
 }
@@ -237,6 +326,7 @@ model Product {
 
   movements InventoryMovement[]
   sales     Sale[]
+  stockRequests StockRequest[]
 
   @@map("products")
 }
@@ -255,6 +345,7 @@ model InventoryMovement {
   createdById String?
   createdBy   User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime     @default(now())
+  stockRequest StockRequest?
 
   @@index([productId])
   @@map("inventory_movements")
@@ -506,9 +597,11 @@ model Expense {
   amount       Float
   incurredAt   DateTime    @default(now())
   receiptUrl   String?
+  paymentStatus ExpensePaymentStatus @default(PAID)
   createdById  String?
   createdBy    User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt    DateTime    @default(now())
+  financialRequest FinancialRequest?
 
   @@index([subsidiaryId])
   @@index([incurredAt])
@@ -562,3 +655,167 @@ model CropRotation {
   @@index([cropId])
   @@map("crop_rotations")
 }
+model Staff {
+  id            String          @id @default(cuid())
+  name          String
+  phone         String?
+  email         String?
+  jobTitle      String?
+  department    StaffDepartment @default(OTHER)
+  subsidiaryId  String?
+  subsidiary    Subsidiary?     @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  status        StaffStatus     @default(ACTIVE)
+  startDate     DateTime?
+  bankName      String?
+  bankCode      String?
+  accountNumber String?
+  accountName   String?
+  linkedUserId  String?         @unique
+  linkedUser    User?           @relation(fields: [linkedUserId], references: [id], onDelete: SetNull)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([department])
+  @@index([subsidiaryId])
+  @@map("staff")
+}
+
+model StockRequest {
+  id                  String             @id @default(cuid())
+  productId           String
+  product             Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  subsidiaryId        String?
+  subsidiary          Subsidiary?        @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  type                MovementType
+  quantity            Int
+  unitCost            Float?
+  reference           String?
+  note                String?
+  receiptUrl          String?
+  status              ApprovalStatus     @default(PENDING)
+  decisionNote        String?
+  requestedById       String?
+  requestedBy         User?              @relation("StockRequestRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  approvedById        String?
+  approvedBy          User?              @relation("StockRequestApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  decidedAt           DateTime?
+  inventoryMovementId String?            @unique
+  inventoryMovement   InventoryMovement? @relation(fields: [inventoryMovementId], references: [id], onDelete: SetNull)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([status])
+  @@index([requestedById])
+  @@index([productId])
+  @@map("stock_requests")
+}
+
+model FinancialRequest {
+  id                String               @id @default(cuid())
+  type              FinancialRequestType
+  subsidiaryId      String?
+  subsidiary        Subsidiary?          @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  department        StaffDepartment?
+  amount            Float
+  category          String
+  description       String?
+  vendor            String?
+  payeeName         String?
+  bankName          String?
+  bankCode          String?
+  bankAccountNumber String?
+  requestedFor      DateTime?
+  attachmentUrl     String?
+  status            ApprovalStatus       @default(PENDING)
+  decisionNote      String?
+  requestedById     String?
+  requestedBy       User?                @relation("FinancialRequestRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  approvedById      String?
+  approvedBy        User?                @relation("FinancialRequestApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  decidedAt         DateTime?
+  phoneNumber       String?
+  network           String?
+  dataPlan          String?
+  disco             String?
+  customerId        String?
+  meterType         String?
+  payerName         String?
+  merchantTxRef     String?              @unique
+  provider          PaymentProvider      @default(NONE)
+  providerStatus    ProviderStatus       @default(NOT_INITIATED)
+  providerReference String?
+  providerResponse  Json?
+  executedAt        DateTime?
+  executedById      String?
+  executedBy        User?                @relation("FinancialRequestExecutor", fields: [executedById], references: [id], onDelete: SetNull)
+  expenseId         String?              @unique
+  expense           Expense?             @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  providerEvents    PaymentProviderEvent[]
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([status])
+  @@index([type])
+  @@index([requestedById])
+  @@map("financial_requests")
+}
+
+model RequestComment {
+  id            String            @id @default(cuid())
+  entityType    RequestEntityType
+  entityId      String
+  authorId      String?
+  author        User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  message       String
+  isInstruction Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+
+  @@index([entityType, entityId])
+  @@map("request_comments")
+}
+
+model Notification {
+  id          String            @id @default(cuid())
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        NotificationType  @default(GENERAL)
+  title       String
+  message     String?
+  entityType  RequestEntityType @default(GENERAL)
+  entityId    String?
+  href        String?
+  isRead      Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+
+  @@index([userId, isRead])
+  @@index([entityType, entityId])
+  @@map("notifications")
+}
+
+model PaymentProviderEvent {
+  id                  String                    @id @default(cuid())
+  provider            PaymentProvider           @default(MONNIFY)
+  eventId             String
+  eventType           String
+  signature           String?
+  signatureAlgorithm  String?
+  signatureVersion    String?
+  providerTimestamp   DateTime?
+  verificationStatus  WebhookVerificationStatus @default(SKIPPED)
+  payload             Json
+  merchantTxRef       String?
+  providerReference   String?
+  financialRequestId  String?
+  financialRequest    FinancialRequest?         @relation(fields: [financialRequestId], references: [id], onDelete: SetNull)
+  processedAt         DateTime?
+  createdAt           DateTime                  @default(now())
+
+  @@unique([provider, eventId])
+  @@index([eventType])
+  @@index([merchantTxRef])
+  @@index([providerReference])
+  @@map("payment_provider_events")
+}
+
+
+

@@ -41,7 +41,7 @@ interface FeedRow {
   date: string;
   feedType: string | null;
   quantityKg: number;
-  cost: number;
+  cost: number | null;
 }
 interface BatchDetailData {
   id: string;
@@ -89,7 +89,9 @@ export function BatchDetail({ batchId, type }: { batchId: string; type: 'LAYERS'
       </Link>
       <PageHeader
         title={b?.name ?? 'Batch'}
-        description={b ? `${b.breed ?? 'Unknown breed'} · started ${fmtDate(b.startDate)} · ${b.status}` : ''}
+        description={
+          b ? `${b.breed ?? 'Unknown breed'} Â· started ${fmtDate(b.startDate)} Â· ${b.status}` : ''
+        }
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -99,7 +101,9 @@ export function BatchDetail({ batchId, type }: { batchId: string; type: 'LAYERS'
         <Stat label="Feed used (kg)" value={num(b?.totalFeedKg ?? 0)} />
       </div>
 
-      {type === 'LAYERS' && <EggSection batchId={batchId} rows={b?.eggProduction ?? []} loading={q.isLoading} />}
+      {type === 'LAYERS' && (
+        <EggSection batchId={batchId} rows={b?.eggProduction ?? []} loading={q.isLoading} />
+      )}
       <MortalitySection batchId={batchId} rows={b?.mortalityRecords ?? []} loading={q.isLoading} />
       <FeedSection batchId={batchId} rows={b?.feedRecords ?? []} loading={q.isLoading} />
     </div>
@@ -129,10 +133,22 @@ function SectionHeader({ title, action }: { title: string; action?: React.ReactN
   );
 }
 
-function EggSection({ batchId, rows, loading }: { batchId: string; rows: EggRow[]; loading: boolean }) {
+function EggSection({
+  batchId,
+  rows,
+  loading,
+}: {
+  batchId: string;
+  rows: EggRow[];
+  loading: boolean;
+}) {
   const { can } = useAuth();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ date: toDateInput(new Date()), eggsCollected: '', damaged: '' });
+  const [form, setForm] = useState({
+    date: toDateInput(new Date()),
+    eggsCollected: '',
+    damaged: '',
+  });
   const m = useRecordMutation(batchId, '/farm/eggs', 'Egg collection', () => {
     setOpen(false);
     setForm({ date: toDateInput(new Date()), eggsCollected: '', damaged: '' });
@@ -164,7 +180,11 @@ function EggSection({ batchId, rows, loading }: { batchId: string; rows: EggRow[
                 <div className="grid gap-3">
                   <div className="space-y-1.5">
                     <Label>Date</Label>
-                    <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                    <Input
+                      type="date"
+                      value={form.date}
+                      onChange={(e) => setForm({ ...form, date: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Eggs collected</Label>
@@ -209,7 +229,15 @@ function EggSection({ batchId, rows, loading }: { batchId: string; rows: EggRow[
   );
 }
 
-function MortalitySection({ batchId, rows, loading }: { batchId: string; rows: MortalityRow[]; loading: boolean }) {
+function MortalitySection({
+  batchId,
+  rows,
+  loading,
+}: {
+  batchId: string;
+  rows: MortalityRow[];
+  loading: boolean;
+}) {
   const { can } = useAuth();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ date: toDateInput(new Date()), count: '', cause: '' });
@@ -243,7 +271,11 @@ function MortalitySection({ batchId, rows, loading }: { batchId: string; rows: M
                 <div className="grid gap-3">
                   <div className="space-y-1.5">
                     <Label>Date</Label>
-                    <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                    <Input
+                      type="date"
+                      value={form.date}
+                      onChange={(e) => setForm({ ...form, date: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Count</Label>
@@ -255,12 +287,21 @@ function MortalitySection({ batchId, rows, loading }: { batchId: string; rows: M
                   </div>
                   <div className="space-y-1.5">
                     <Label>Cause</Label>
-                    <Input value={form.cause} onChange={(e) => setForm({ ...form, cause: e.target.value })} />
+                    <Input
+                      value={form.cause}
+                      onChange={(e) => setForm({ ...form, cause: e.target.value })}
+                    />
                   </div>
                 </div>
                 <DialogFooter>
                   <Button
-                    onClick={() => m.mutate({ date: form.date, count: Number(form.count || 0), cause: form.cause || null })}
+                    onClick={() =>
+                      m.mutate({
+                        date: form.date,
+                        count: Number(form.count || 0),
+                        cause: form.cause || null,
+                      })
+                    }
                     disabled={Number(form.count) < 1 || m.isPending}
                   >
                     {m.isPending && <Loader2 className="size-4 animate-spin" />}
@@ -277,10 +318,23 @@ function MortalitySection({ batchId, rows, loading }: { batchId: string; rows: M
   );
 }
 
-function FeedSection({ batchId, rows, loading }: { batchId: string; rows: FeedRow[]; loading: boolean }) {
+function FeedSection({
+  batchId,
+  rows,
+  loading,
+}: {
+  batchId: string;
+  rows: FeedRow[];
+  loading: boolean;
+}) {
   const { can } = useAuth();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ date: toDateInput(new Date()), feedType: '', quantityKg: '', cost: '' });
+  const [form, setForm] = useState({
+    date: toDateInput(new Date()),
+    feedType: '',
+    quantityKg: '',
+    cost: '',
+  });
   const m = useRecordMutation(batchId, '/farm/feed', 'Feed', () => {
     setOpen(false);
     setForm({ date: toDateInput(new Date()), feedType: '', quantityKg: '', cost: '' });
@@ -290,7 +344,14 @@ function FeedSection({ batchId, rows, loading }: { batchId: string; rows: FeedRo
     { header: 'Date', cell: (r) => fmtDate(r.date) },
     { header: 'Feed type', cell: (r) => r.feedType ?? '—' },
     { header: 'Qty (kg)', cell: (r) => num(r.quantityKg) },
-    { header: 'Cost', cell: (r) => naira(r.cost) },
+    ...(can('finance:read')
+      ? [
+          {
+            header: 'Cost',
+            cell: (r) => (r.cost != null ? naira(r.cost) : '—'),
+          } satisfies Column<FeedRow>,
+        ]
+      : []),
   ];
 
   return (
@@ -312,11 +373,18 @@ function FeedSection({ batchId, rows, loading }: { batchId: string; rows: FeedRo
                 <div className="grid gap-3">
                   <div className="space-y-1.5">
                     <Label>Date</Label>
-                    <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                    <Input
+                      type="date"
+                      value={form.date}
+                      onChange={(e) => setForm({ ...form, date: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Feed type</Label>
-                    <Input value={form.feedType} onChange={(e) => setForm({ ...form, feedType: e.target.value })} />
+                    <Input
+                      value={form.feedType}
+                      onChange={(e) => setForm({ ...form, feedType: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Quantity (kg)</Label>
@@ -328,7 +396,11 @@ function FeedSection({ batchId, rows, loading }: { batchId: string; rows: FeedRo
                   </div>
                   <div className="space-y-1.5">
                     <Label>Cost (₦)</Label>
-                    <Input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} />
+                    <Input
+                      type="number"
+                      value={form.cost}
+                      onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                    />
                   </div>
                 </div>
                 <DialogFooter>

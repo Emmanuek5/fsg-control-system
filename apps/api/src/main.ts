@@ -15,6 +15,7 @@ import { AllExceptionsFilter } from './common/all-exceptions.filter';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: false,
+    rawBody: true,
   });
 
   app.use(cookieParser());

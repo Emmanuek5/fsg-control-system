@@ -7,7 +7,7 @@
  * A permission key has the form `<resource>:<action>` (e.g. `products:create`).
  */
 
-export type PermissionAction = 'view' | 'read' | 'create' | 'update' | 'delete' | 'manage';
+export type PermissionAction = 'view' | 'read' | 'create' | 'update' | 'delete' | 'approve' | 'execute' | 'manage';
 
 export interface PermissionResource {
   /** stable key used in permission strings, e.g. "products" */
@@ -33,6 +33,8 @@ export const ACTION_LABELS: Record<PermissionAction, string> = {
   create: 'Create',
   update: 'Edit',
   delete: 'Delete',
+  approve: 'Approve',
+  execute: 'Execute',
   manage: 'Manage',
 };
 
@@ -104,6 +106,33 @@ export const PERMISSION_RESOURCES: PermissionResource[] = [
     actions: ['read', 'update', 'delete'],
   },
   {
+    key: 'stock_requests',
+    label: 'Stock Requests',
+    description: 'Approval workflow for stock in, out and adjustments',
+    actions: ['read', 'create', 'approve', 'delete'],
+  },
+  {
+    key: 'financial_requests',
+    label: 'Financial Requests',
+    description: 'Expense, disbursement, airtime, data and bill approval requests',
+    actions: ['read', 'create', 'approve', 'delete'],
+  },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    description: 'User-specific action notifications and read state',
+    actions: ['read', 'update'],
+  },
+  { key: 'staff', label: 'Staff', description: 'Staff profiles, assignments and bank details', actions: CRUD },
+  {
+    key: 'finance',
+    label: 'Financial Insight',
+    description: 'Company-wide financial visibility: costs, valuations, totals and summaries',
+    actions: ['read'],
+  },
+  { key: 'payments', label: 'Payments', description: 'Future provider payment execution', actions: ['read', 'execute'] },
+  { key: 'payroll', label: 'Payroll', description: 'Future payroll automation', actions: ['read', 'manage'] },
+  {
     key: 'subsidiaries',
     label: 'Subsidiaries',
     description: 'Business subsidiaries / divisions',
@@ -136,6 +165,10 @@ function describe(resourceLabel: string, action: PermissionAction): string {
       return `Edit ${resourceLabel}`;
     case 'delete':
       return `Delete ${resourceLabel}`;
+    case 'approve':
+      return `Approve ${resourceLabel}`;
+    case 'execute':
+      return `Execute ${resourceLabel}`;
     case 'manage':
       return `Manage ${resourceLabel}`;
   }
@@ -187,6 +220,14 @@ const managerPermissions: string[] = [
   ...permissionsFor('land'),
   ...permissionsFor('investments'),
   ...permissionsFor('alerts'),
+  ...permissionsFor('stock_requests'),
+  ...permissionsFor('financial_requests'),
+  ...permissionsFor('notifications'),
+  ...permissionsFor('staff'),
+  'finance:read',
+  'payments:read',
+  'payments:execute',
+  'payroll:read',
   'subsidiaries:read',
   'users:read',
 ];
@@ -216,6 +257,12 @@ const staffPermissions: string[] = [
   'maintenance:create',
   'maintenance:update',
   'alerts:read',
+  'stock_requests:read',
+  'stock_requests:create',
+  'financial_requests:read',
+  'financial_requests:create',
+  'notifications:read',
+  'notifications:update',
 ];
 
 export const DEFAULT_ROLES: DefaultRoleDef[] = [
@@ -238,3 +285,7 @@ export const DEFAULT_ROLES: DefaultRoleDef[] = [
     permissions: staffPermissions,
   },
 ];
+
+
+
+

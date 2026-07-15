@@ -2,12 +2,14 @@ import { z } from 'zod';
 import {
   alertSeveritySchema,
   alertTypeSchema,
+  approvalStatusSchema,
   assetConditionSchema,
   assetStatusSchema,
   batchStatusSchema,
   batchTypeSchema,
   cropInputTypeSchema,
   cropStatusSchema,
+  financialRequestTypeSchema,
   investmentStatusSchema,
   investmentTypeSchema,
   landStatusSchema,
@@ -15,7 +17,10 @@ import {
   livestockStatusSchema,
   maintenanceStatusSchema,
   movementTypeSchema,
+  requestEntityTypeSchema,
   saleChannelSchema,
+  staffDepartmentSchema,
+  staffStatusSchema,
   subsidiaryTypeSchema,
 } from './enums';
 
@@ -350,3 +355,116 @@ export type CreateExpenseDto = z.infer<typeof createExpenseSchema>;
 
 export const updateExpenseSchema = createExpenseSchema.partial();
 export type UpdateExpenseDto = z.infer<typeof updateExpenseSchema>;
+// ─── Approval requests ─────────────────────────────────────────────────────
+
+export const approvalDecisionSchema = z.object({
+  note: z.string().max(500).optional().nullable(),
+});
+export type ApprovalDecisionDto = z.infer<typeof approvalDecisionSchema>;
+
+export const payOtpSchema = z.object({
+  authorizationCode: z.string().min(1).max(20),
+});
+export type PayOtpDto = z.infer<typeof payOtpSchema>;
+
+export const createRequestCommentSchema = z.object({
+  entityType: requestEntityTypeSchema,
+  entityId: z.string().min(1),
+  message: z.string().min(1).max(1000),
+  isInstruction: z.boolean().optional(),
+});
+export type CreateRequestCommentDto = z.infer<typeof createRequestCommentSchema>;
+
+export const createStockRequestSchema = z.object({
+  productId: z.string().min(1),
+  subsidiaryId: z.string().optional().nullable(),
+  type: movementTypeSchema,
+  quantity: z.coerce.number().int().positive(),
+  unitCost: z.coerce.number().nonnegative().optional().nullable(),
+  reference: z.string().max(120).optional().nullable(),
+  note: z.string().max(500).optional().nullable(),
+  receiptUrl: z.string().max(500).optional().nullable(),
+});
+export type CreateStockRequestDto = z.infer<typeof createStockRequestSchema>;
+
+export const updateStockRequestSchema = createStockRequestSchema.partial().extend({
+  status: approvalStatusSchema.optional(),
+});
+export type UpdateStockRequestDto = z.infer<typeof updateStockRequestSchema>;
+
+const financialRequestBaseSchema = z.object({
+  type: financialRequestTypeSchema,
+  subsidiaryId: z.string().optional().nullable(),
+  department: staffDepartmentSchema.optional().nullable(),
+  amount: z.coerce.number().positive(),
+  category: z.string().min(1).max(80),
+  description: z.string().max(500).optional().nullable(),
+  vendor: z.string().max(120).optional().nullable(),
+  payeeName: z.string().max(120).optional().nullable(),
+  bankName: z.string().max(120).optional().nullable(),
+  bankCode: z.string().max(20).optional().nullable(),
+  bankAccountNumber: z.string().max(20).optional().nullable(),
+  requestedFor: z.coerce.date().optional().nullable(),
+  attachmentUrl: z.string().max(500).optional().nullable(),
+  phoneNumber: z.string().min(7).max(20).optional().nullable(),
+  network: z.string().max(20).optional().nullable(),
+  dataPlan: z.string().max(160).optional().nullable(),
+  disco: z.string().max(60).optional().nullable(),
+  customerId: z.string().max(80).optional().nullable(),
+  meterType: z.string().max(20).optional().nullable(),
+  payerName: z.string().max(120).optional().nullable(),
+});
+
+export const createFinancialRequestSchema = financialRequestBaseSchema.superRefine((value, ctx) => {
+  if (value.type === 'AIRTIME' || value.type === 'DATA_BUNDLE') {
+    if (!value.phoneNumber) ctx.addIssue({ code: 'custom', path: ['phoneNumber'], message: 'Phone number is required' });
+    if (!value.network) ctx.addIssue({ code: 'custom', path: ['network'], message: 'Network is required' });
+  }
+  if (value.type === 'DATA_BUNDLE' && !value.dataPlan) {
+    ctx.addIssue({ code: 'custom', path: ['dataPlan'], message: 'Data plan is required' });
+  }
+  if (value.type === 'ELECTRICITY_BILL') {
+    if (!value.disco) ctx.addIssue({ code: 'custom', path: ['disco'], message: 'Disco is required' });
+    if (!value.customerId) ctx.addIssue({ code: 'custom', path: ['customerId'], message: 'Customer or meter number is required' });
+    if (!value.meterType) ctx.addIssue({ code: 'custom', path: ['meterType'], message: 'Meter type is required' });
+    if (!value.payerName) ctx.addIssue({ code: 'custom', path: ['payerName'], message: 'Payer name is required' });
+  }
+});
+export type CreateFinancialRequestDto = z.infer<typeof createFinancialRequestSchema>;
+
+export const updateFinancialRequestSchema = financialRequestBaseSchema.partial().extend({
+  status: approvalStatusSchema.optional(),
+});
+export type UpdateFinancialRequestDto = z.infer<typeof updateFinancialRequestSchema>;
+// ─── Staff ─────────────────────────────────────────────────────────────────
+
+export const createStaffSchema = z.object({
+  name: z.string().min(2).max(120),
+  phone: z.string().max(30).optional().nullable(),
+  email: z.string().email().optional().nullable(),
+  jobTitle: z.string().max(120).optional().nullable(),
+  department: staffDepartmentSchema.default('OTHER'),
+  subsidiaryId: z.string().optional().nullable(),
+  status: staffStatusSchema.optional(),
+  startDate: z.coerce.date().optional().nullable(),
+  bankName: z.string().max(120).optional().nullable(),
+  bankCode: z.string().max(20).optional().nullable(),
+  accountNumber: z.string().max(30).optional().nullable(),
+  accountName: z.string().max(120).optional().nullable(),
+  linkedUserId: z.string().optional().nullable(),
+});
+export type CreateStaffDto = z.infer<typeof createStaffSchema>;
+
+export const updateStaffSchema = createStaffSchema.partial();
+export type UpdateStaffDto = z.infer<typeof updateStaffSchema>;
+
+// ─── Notifications ─────────────────────────────────────────────────────────
+
+export const updateNotificationSchema = z.object({
+  isRead: z.boolean().optional(),
+});
+export type UpdateNotificationDto = z.infer<typeof updateNotificationSchema>;
+
+
+
+

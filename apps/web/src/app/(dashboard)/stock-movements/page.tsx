@@ -53,6 +53,7 @@ const typeVariant: Record<MovementType, 'success' | 'destructive' | 'secondary'>
 
 export default function StockMovementsPage() {
   const { can } = useAuth();
+  const canSeeFinance = can('finance:read');
 
   const movementsQ = useQuery({
     queryKey: ['movements'],
@@ -84,14 +85,24 @@ export default function StockMovementsPage() {
         </span>
       ),
     },
-    { header: 'Unit cost', cell: (m) => (m.unitCost != null ? naira(m.unitCost) : '—') },
+    ...(canSeeFinance
+      ? [
+          {
+            header: 'Unit cost',
+            cell: (m) => (m.unitCost != null ? naira(m.unitCost) : '—'),
+          } satisfies Column<Movement>,
+        ]
+      : []),
     { header: 'Reference', cell: (m) => m.reference ?? '—' },
     { header: 'By', cell: (m) => m.createdBy?.name ?? '—' },
   ];
 
   return (
     <div>
-      <PageHeader title="Stock Movements" description="Stock in, out and adjustments across the shop">
+      <PageHeader
+        title="Stock Movements"
+        description="Stock in, out and adjustments across the shop"
+      >
         <ExportButton
           filename="stock-movements"
           rows={movementsQ.data ?? []}
@@ -100,7 +111,7 @@ export default function StockMovementsPage() {
             { header: 'Product', value: (m) => m.product?.name },
             { header: 'Type', value: (m) => m.type },
             { header: 'Quantity', value: (m) => m.quantity },
-            { header: 'Unit cost', value: (m) => m.unitCost },
+            ...(canSeeFinance ? [{ header: 'Unit cost', value: (m: Movement) => m.unitCost }] : []),
             { header: 'Reference', value: (m) => m.reference },
             { header: 'By', value: (m) => m.createdBy?.name },
           ]}
@@ -176,7 +187,10 @@ function MovementDialog({ products }: { products: ProductOpt[] }) {
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Product</Label>
-            <Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}>
+            <Select
+              value={form.productId}
+              onChange={(e) => setForm({ ...form, productId: e.target.value })}
+            >
               <option value="">Select a product…</option>
               {products.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -223,7 +237,10 @@ function MovementDialog({ products }: { products: ProductOpt[] }) {
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Note</Label>
-            <Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+            <Textarea
+              value={form.note}
+              onChange={(e) => setForm({ ...form, note: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Receipt</Label>

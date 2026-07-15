@@ -16,6 +16,10 @@ const LABELS: Record<string, string> = {
   subsidiaries: 'Subsidiary',
   users: 'User',
   roles: 'Role',
+  notifications: 'Notification',
+  'stock-requests': 'Stock request',
+  'financial-requests': 'Financial request',
+  staff: 'Staff',
 };
 const FARM: Record<string, string> = {
   batches: 'Farm batch',
@@ -101,3 +105,4 @@ export class AuditInterceptor implements NestInterceptor {
     });
   }
 }
+

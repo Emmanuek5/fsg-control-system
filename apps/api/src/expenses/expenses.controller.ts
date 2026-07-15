@@ -19,12 +19,17 @@ export class ExpensesController {
 
   @Get()
   @RequirePermissions('expenses:read')
-  list(@Query('subsidiaryId') subsidiaryId?: string, @Query('category') category?: string) {
-    return this.expenses.list(subsidiaryId, category);
+  list(
+    @CurrentUser() user: RequestUser,
+    @Query('subsidiaryId') subsidiaryId?: string,
+    @Query('category') category?: string,
+  ) {
+    return this.expenses.list(user, subsidiaryId, category);
   }
 
+  // Company-wide totals — needs financial visibility on top of plain read access.
   @Get('summary')
-  @RequirePermissions('expenses:read')
+  @RequirePermissions('expenses:read', 'finance:read')
   summary() {
     return this.expenses.summary();
   }

@@ -34,7 +34,7 @@ interface CropInput {
   name: string;
   quantity: number | null;
   unit: string | null;
-  cost: number;
+  cost: number | null;
   date: string;
   notes: string | null;
 }
@@ -53,12 +53,15 @@ interface CropDetailData {
   areaHectares: number;
   status: string;
   expectedYield: number | null;
-  totalInputCost: number;
+  totalInputCost: number | null;
   inputs: CropInput[];
   rotations: CropRotation[];
 }
 
-const inputTypeVariant: Record<InputType, 'default' | 'success' | 'warning' | 'destructive' | 'secondary'> = {
+const inputTypeVariant: Record<
+  InputType,
+  'default' | 'success' | 'warning' | 'destructive' | 'secondary'
+> = {
   SEED: 'default',
   FERTILIZER: 'success',
   HERBICIDE: 'warning',
@@ -78,6 +81,8 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 export function CropDetail({ cropId }: { cropId: string }) {
+  const { can } = useAuth();
+  const canSeeFinance = can('finance:read');
   const q = useQuery({
     queryKey: ['crop', cropId],
     queryFn: () => api.get<CropDetailData>(`/crops/${cropId}`),
@@ -94,13 +99,23 @@ export function CropDetail({ cropId }: { cropId: string }) {
       </Link>
       <PageHeader
         title={c?.name ?? 'Crop'}
-        description={c ? `${c.variety ?? 'Unknown variety'} · ${c.plot ?? 'no plot'} · ${c.status}` : ''}
+        description={
+          c ? `${c.variety ?? 'Unknown variety'} Â· ${c.plot ?? 'no plot'} Â· ${c.status}` : ''
+        }
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat label="Area (ha)" value={num(c?.areaHectares ?? 0)} />
-        <Stat label="Input cost" value={naira(c?.totalInputCost ?? 0)} />
-        <Stat label="Expected yield" value={c?.expectedYield != null ? `${num(c.expectedYield)} t` : '—'} />
+        {canSeeFinance && (
+          <Stat
+            label="Input cost"
+            value={c?.totalInputCost != null ? naira(c.totalInputCost) : '—'}
+          />
+        )}
+        <Stat
+          label="Expected yield"
+          value={c?.expectedYield != null ? `${num(c.expectedYield)} t` : '—'}
+        />
         <Stat label="Inputs logged" value={num(c?.inputs.length ?? 0)} />
       </div>
 
@@ -126,11 +141,27 @@ function SectionHeader({ title, action }: { title: string; action?: React.ReactN
   );
 }
 
-function InputsSection({ cropId, rows, loading }: { cropId: string; rows: CropInput[]; loading: boolean }) {
+function InputsSection({
+  cropId,
+  rows,
+  loading,
+}: {
+  cropId: string;
+  rows: CropInput[];
+  loading: boolean;
+}) {
   const { can } = useAuth();
   const invalidate = useInvalidate(cropId);
   const [open, setOpen] = useState(false);
-  const blank = { type: 'SEED' as InputType, name: '', quantity: '', unit: '', cost: '', date: toDateInput(new Date()), notes: '' };
+  const blank = {
+    type: 'SEED' as InputType,
+    name: '',
+    quantity: '',
+    unit: '',
+    cost: '',
+    date: toDateInput(new Date()),
+    notes: '',
+  };
   const [form, setForm] = useState(blank);
 
   const add = useMutation({
@@ -164,8 +195,18 @@ function InputsSection({ cropId, rows, loading }: { cropId: string; rows: CropIn
     { header: 'Date', cell: (r) => fmtDate(r.date) },
     { header: 'Type', cell: (r) => <Badge variant={inputTypeVariant[r.type]}>{r.type}</Badge> },
     { header: 'Item', cell: (r) => r.name },
-    { header: 'Quantity', cell: (r) => (r.quantity != null ? `${num(r.quantity)} ${r.unit ?? ''}` : '—') },
-    { header: 'Cost', cell: (r) => naira(r.cost) },
+    {
+      header: 'Quantity',
+      cell: (r) => (r.quantity != null ? `${num(r.quantity)} ${r.unit ?? ''}` : '—'),
+    },
+    ...(can('finance:read')
+      ? [
+          {
+            header: 'Cost',
+            cell: (r) => (r.cost != null ? naira(r.cost) : '—'),
+          } satisfies Column<CropInput>,
+        ]
+      : []),
     {
       header: '',
       className: 'text-right',
@@ -203,7 +244,10 @@ function InputsSection({ cropId, rows, loading }: { cropId: string; rows: CropIn
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label>Type</Label>
-                    <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as InputType })}>
+                    <Select
+                      value={form.type}
+                      onChange={(e) => setForm({ ...form, type: e.target.value as InputType })}
+                    >
                       <option value="SEED">Seed</option>
                       <option value="FERTILIZER">Fertilizer</option>
                       <option value="HERBICIDE">Herbicide</option>
@@ -213,31 +257,57 @@ function InputsSection({ cropId, rows, loading }: { cropId: string; rows: CropIn
                   </div>
                   <div className="space-y-1.5">
                     <Label>Item name</Label>
-                    <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. SAMMAZ 15, Roundup" />
+                    <Input
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder="e.g. SAMMAZ 15, Roundup"
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Quantity</Label>
-                    <Input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+                    <Input
+                      type="number"
+                      value={form.quantity}
+                      onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Unit</Label>
-                    <Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="kg, L, bag" />
+                    <Input
+                      value={form.unit}
+                      onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                      placeholder="kg, L, bag"
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Cost (₦)</Label>
-                    <Input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} />
+                    <Input
+                      type="number"
+                      value={form.cost}
+                      onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Date</Label>
-                    <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                    <Input
+                      type="date"
+                      value={form.date}
+                      onChange={(e) => setForm({ ...form, date: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label>Notes</Label>
-                    <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                    <Textarea
+                      value={form.notes}
+                      onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                    />
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button onClick={() => add.mutate()} disabled={form.name.trim().length < 1 || add.isPending}>
+                  <Button
+                    onClick={() => add.mutate()}
+                    disabled={form.name.trim().length < 1 || add.isPending}
+                  >
                     {add.isPending && <Loader2 className="size-4 animate-spin" />}
                     Add
                   </Button>
@@ -252,7 +322,15 @@ function InputsSection({ cropId, rows, loading }: { cropId: string; rows: CropIn
   );
 }
 
-function RotationsSection({ cropId, rows, loading }: { cropId: string; rows: CropRotation[]; loading: boolean }) {
+function RotationsSection({
+  cropId,
+  rows,
+  loading,
+}: {
+  cropId: string;
+  rows: CropRotation[];
+  loading: boolean;
+}) {
   const { can } = useAuth();
   const invalidate = useInvalidate(cropId);
   const [open, setOpen] = useState(false);
@@ -325,25 +403,44 @@ function RotationsSection({ cropId, rows, loading }: { cropId: string; rows: Cro
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label>Season</Label>
-                    <Input value={form.season} onChange={(e) => setForm({ ...form, season: e.target.value })} placeholder="e.g. 2026 Wet" />
+                    <Input
+                      value={form.season}
+                      onChange={(e) => setForm({ ...form, season: e.target.value })}
+                      placeholder="e.g. 2026 Wet"
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Crop planted</Label>
-                    <Input value={form.cropName} onChange={(e) => setForm({ ...form, cropName: e.target.value })} placeholder="e.g. Soybean" />
+                    <Input
+                      value={form.cropName}
+                      onChange={(e) => setForm({ ...form, cropName: e.target.value })}
+                      placeholder="e.g. Soybean"
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Date</Label>
-                    <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                    <Input
+                      type="date"
+                      value={form.date}
+                      onChange={(e) => setForm({ ...form, date: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label>Notes</Label>
-                    <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                    <Textarea
+                      value={form.notes}
+                      onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                    />
                   </div>
                 </div>
                 <DialogFooter>
                   <Button
                     onClick={() => add.mutate()}
-                    disabled={form.season.trim().length < 1 || form.cropName.trim().length < 1 || add.isPending}
+                    disabled={
+                      form.season.trim().length < 1 ||
+                      form.cropName.trim().length < 1 ||
+                      add.isPending
+                    }
                   >
                     {add.isPending && <Loader2 className="size-4 animate-spin" />}
                     Add
@@ -354,7 +451,12 @@ function RotationsSection({ cropId, rows, loading }: { cropId: string; rows: Cro
           )
         }
       />
-      <DataTable columns={columns} rows={rows} loading={loading} empty="No rotations recorded yet." />
+      <DataTable
+        columns={columns}
+        rows={rows}
+        loading={loading}
+        empty="No rotations recorded yet."
+      />
     </section>
   );
 }

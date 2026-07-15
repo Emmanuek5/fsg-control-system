@@ -6,6 +6,7 @@ import {
   type CreateProductDto,
   type UpdateProductDto,
 } from '@fsg/shared';
+import { CurrentUser, type RequestUser } from '../common/current-user.decorator';
 import { RequirePermissions } from '../common/require-permissions.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { ProductsService } from './products.service';
@@ -18,14 +19,14 @@ export class ProductsController {
 
   @Get()
   @RequirePermissions('products:read')
-  list(@Query('search') search?: string) {
-    return this.products.list(search);
+  list(@CurrentUser() user: RequestUser, @Query('search') search?: string) {
+    return this.products.list(user, search);
   }
 
   @Get(':id')
   @RequirePermissions('products:read')
-  get(@Param('id') id: string) {
-    return this.products.get(id);
+  get(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.products.get(user, id);
   }
 
   @Post()

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, Loader2 } from 'lucide-react';
+import { Loader2, Sprout } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
@@ -33,13 +33,34 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-card p-8 shadow-2xl">
+    <div
+      className="relative flex min-h-screen items-center justify-center overflow-hidden p-4"
+      style={{ backgroundColor: 'hsl(160 25% 9%)' }}
+    >
+      {/* Warm gold glow rising from the horizon + a faint field-row texture. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(120% 90% at 50% 115%, hsl(46 85% 62% / 0.22) 0%, hsl(152 42% 26% / 0.25) 38%, transparent 70%), radial-gradient(80% 60% at 85% -10%, hsl(152 42% 30% / 0.28) 0%, transparent 60%)',
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.04]"
+        style={{
+          backgroundImage:
+            'repeating-linear-gradient(-45deg, transparent 0 14px, hsl(40 33% 97%) 14px 15px)',
+        }}
+      />
+
+      <div className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-card p-8 shadow-overlay">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Building2 className="size-6" />
+          <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-primary text-[hsl(46,85%,62%)]">
+            <Sprout className="size-6" />
           </div>
-          <h1 className="text-xl font-bold">FSG Work Solutions</h1>
+          <h1 className="font-display text-xl font-bold tracking-tight">FSG Work Solutions</h1>
           <p className="text-sm text-muted-foreground">Sign in to the management portal</p>
         </div>
 

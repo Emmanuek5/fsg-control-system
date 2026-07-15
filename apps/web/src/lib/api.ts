@@ -47,12 +47,16 @@ function tryRefresh(): Promise<string | null> {
   return refreshing;
 }
 
+// The auth handshake itself must never trigger refresh-and-retry. Everything
+// else — including /auth/me — may refresh an expired access token in place.
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/refresh', '/auth/logout'];
+
 export async function apiFetch<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
-  const isAuthPath = path.startsWith('/auth/');
+  const skipRefresh = NO_REFRESH_PATHS.some((p) => path.startsWith(p));
   let token = getToken();
   let res = await rawFetch(path, options, token);
 
-  if (res.status === 401 && !isAuthPath) {
+  if (res.status === 401 && !skipRefresh) {
     const newToken = await tryRefresh();
     if (newToken) res = await rawFetch(path, options, newToken);
   }
@@ -64,7 +68,7 @@ export async function apiFetch<T = unknown>(path: string, options: RequestInit =
     } catch {
       /* ignore */
     }
-    if (res.status === 401 && !isAuthPath) {
+    if (res.status === 401 && !skipRefresh) {
       clearToken();
       if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';

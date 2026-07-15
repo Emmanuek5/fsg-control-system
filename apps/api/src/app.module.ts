@@ -22,6 +22,12 @@ import { InvestmentsModule } from './investments/investments.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { AuditModule } from './audit/audit.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { StockRequestsModule } from './stock-requests/stock-requests.module';
+import { FinancialRequestsModule } from './financial-requests/financial-requests.module';
+import { StaffModule } from './staff/staff.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { MonnifyModule } from './monnify/monnify.module';
 import { AuditInterceptor } from './audit/audit.interceptor';
 
 @Module({
@@ -46,6 +52,12 @@ import { AuditInterceptor } from './audit/audit.interceptor';
     AlertsModule,
     ExpensesModule,
     AuditModule,
+    NotificationsModule,
+    StockRequestsModule,
+    FinancialRequestsModule,
+    StaffModule,
+    WebhooksModule,
+    MonnifyModule,
   ],
   providers: [
     // Order matters: authenticate first, then authorize by permission.
@@ -55,3 +67,5 @@ import { AuditInterceptor } from './audit/audit.interceptor';
   ],
 })
 export class AppModule {}
+
+

@@ -10,11 +10,11 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
-    "db:migrate": "pnpm --filter @fsg/api prisma migrate dev",
-    "db:generate": "pnpm --filter @fsg/api prisma generate",
+    "db:migrate": "pnpm --filter @fsg/api migrate",
+    "db:generate": "pnpm --filter @fsg/api generate",
     "db:seed": "pnpm --filter @fsg/api db:seed",
-    "db:studio": "pnpm --filter @fsg/api prisma studio",
-    "db:reset": "pnpm --filter @fsg/api prisma migrate reset"
+    "db:studio": "pnpm --filter @fsg/api studio",
+    "db:reset": "pnpm --filter @fsg/api reset"
   },
   "devDependencies": {
     "prettier": "^3.3.3",

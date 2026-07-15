@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { updateAlertSchema, type UpdateAlertDto } from '@fsg/shared';
+import { CurrentUser, type RequestUser } from '../common/current-user.decorator';
 import { RequirePermissions } from '../common/require-permissions.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AlertsService } from './alerts.service';
@@ -17,8 +18,8 @@ export class AlertsController {
 
   @Get()
   @RequirePermissions('alerts:read')
-  list(@Query('status') status?: string) {
-    return this.alerts.list(status);
+  list(@CurrentUser() user: RequestUser, @Query('status') status?: string) {
+    return this.alerts.list(user, status);
   }
 
   @Post('generate')

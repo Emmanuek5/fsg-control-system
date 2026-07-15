@@ -14,8 +14,8 @@ export class InventoryController {
 
   @Get()
   @RequirePermissions('inventory:read')
-  list(@Query('productId') productId?: string) {
-    return this.inventory.list(productId);
+  list(@CurrentUser() user: RequestUser, @Query('productId') productId?: string) {
+    return this.inventory.list(user, productId);
   }
 
   @Post()

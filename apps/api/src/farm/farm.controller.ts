@@ -13,6 +13,7 @@ import {
   type CreateMortalityDto,
   type UpdateFarmBatchDto,
 } from '@fsg/shared';
+import { CurrentUser, type RequestUser } from '../common/current-user.decorator';
 import { RequirePermissions } from '../common/require-permissions.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { FarmService } from './farm.service';
@@ -31,8 +32,8 @@ export class FarmController {
 
   @Get('batches/:id')
   @RequirePermissions('farm:read')
-  getBatch(@Param('id') id: string) {
-    return this.farm.getBatch(id);
+  getBatch(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.farm.getBatch(user, id);
   }
 
   @Post('batches')
@@ -82,8 +83,8 @@ export class FarmController {
 
   @Get('batches/:id/feed')
   @RequirePermissions('farm:read')
-  listFeed(@Param('id') id: string) {
-    return this.farm.listFeed(id);
+  listFeed(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.farm.listFeed(user, id);
   }
 
   @Post('feed')

@@ -21,14 +21,16 @@ export interface LoginResponse {
 }
 
 export interface DashboardKpis {
-  totalStockValue: number;
-  salesToday: number;
-  salesThisMonth: number;
+  /** Financial KPIs are null when the requester lacks the gating permission
+   *  (finance:read for money figures; land:read / investments:read for theirs). */
+  totalStockValue: number | null;
+  salesToday: number | null;
+  salesThisMonth: number | null;
   birdsAlive: number;
   eggsThisWeek: number;
   overdueMaintenance: number;
-  unpaidLandBalance: number;
-  investmentsNearingMaturity: number;
+  unpaidLandBalance: number | null;
+  investmentsNearingMaturity: number | null;
   activeAlerts: number;
 }
 

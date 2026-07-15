@@ -1,3 +1,4 @@
+import { Inbox } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -53,6 +54,7 @@ export function DataTable<T>({
           ) : rows.length === 0 ? (
             <TableRow className="hover:bg-transparent">
               <TableCell colSpan={columns.length} className="py-12 text-center text-muted-foreground">
+                <Inbox className="mx-auto mb-2 size-6 opacity-40" />
                 {empty}
               </TableCell>
             </TableRow>

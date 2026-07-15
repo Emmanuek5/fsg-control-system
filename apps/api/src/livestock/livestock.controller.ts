@@ -6,6 +6,7 @@ import {
   type CreateLivestockDto,
   type UpdateLivestockDto,
 } from '@fsg/shared';
+import { CurrentUser, type RequestUser } from '../common/current-user.decorator';
 import { RequirePermissions } from '../common/require-permissions.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { LivestockService } from './livestock.service';
@@ -18,8 +19,8 @@ export class LivestockController {
 
   @Get()
   @RequirePermissions('livestock:read')
-  list() {
-    return this.livestock.list();
+  list(@CurrentUser() user: RequestUser) {
+    return this.livestock.list(user);
   }
 
   @Post()

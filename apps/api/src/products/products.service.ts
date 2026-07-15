@@ -1,32 +1,48 @@
 import { Injectable } from '@nestjs/common';
 import type { CreateProductDto, UpdateProductDto } from '@fsg/shared';
+import { PermissionsService } from '../auth/permissions.service';
+import type { RequestUser } from '../common/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissions: PermissionsService,
+  ) {}
 
-  list(search?: string) {
-    return this.prisma.product.findMany({
-      where: search
-        ? {
-            OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { sku: { contains: search, mode: 'insensitive' } },
-              { category: { contains: search, mode: 'insensitive' } },
-            ],
-          }
-        : undefined,
-      orderBy: { createdAt: 'desc' },
-      include: { subsidiary: { select: { id: true, name: true } } },
-    });
+  async list(user: RequestUser, search?: string) {
+    const [products, seesFinance] = await Promise.all([
+      this.prisma.product.findMany({
+        where: search
+          ? {
+              OR: [
+                { name: { contains: search, mode: 'insensitive' } },
+                { sku: { contains: search, mode: 'insensitive' } },
+                { category: { contains: search, mode: 'insensitive' } },
+              ],
+            }
+          : undefined,
+        orderBy: { createdAt: 'desc' },
+        include: { subsidiary: { select: { id: true, name: true } } },
+      }),
+      this.permissions.roleHas(user.roleId, 'finance:read'),
+    ]);
+    return products.map((product) => ({
+      ...product,
+      costPrice: seesFinance ? product.costPrice : null,
+    }));
   }
 
-  get(id: string) {
-    return this.prisma.product.findUniqueOrThrow({
-      where: { id },
-      include: { subsidiary: { select: { id: true, name: true } } },
-    });
+  async get(user: RequestUser, id: string) {
+    const [product, seesFinance] = await Promise.all([
+      this.prisma.product.findUniqueOrThrow({
+        where: { id },
+        include: { subsidiary: { select: { id: true, name: true } } },
+      }),
+      this.permissions.roleHas(user.roleId, 'finance:read'),
+    ]);
+    return { ...product, costPrice: seesFinance ? product.costPrice : null };
   }
 
   create(dto: CreateProductDto) {

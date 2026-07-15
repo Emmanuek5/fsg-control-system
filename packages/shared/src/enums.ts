@@ -167,3 +167,94 @@ export const CropInputType = {
 } as const;
 export type CropInputType = (typeof CropInputType)[keyof typeof CropInputType];
 export const cropInputTypeSchema = z.nativeEnum(CropInputType);
+export const ApprovalStatus = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  DENIED: 'DENIED',
+  NEEDS_INFO: 'NEEDS_INFO',
+  CANCELLED: 'CANCELLED',
+} as const;
+export type ApprovalStatus = (typeof ApprovalStatus)[keyof typeof ApprovalStatus];
+export const approvalStatusSchema = z.nativeEnum(ApprovalStatus);
+
+export const FinancialRequestType = {
+  CASH_EXPENSE: 'CASH_EXPENSE',
+  BANK_TRANSFER: 'BANK_TRANSFER',
+  AIRTIME: 'AIRTIME',
+  DATA_BUNDLE: 'DATA_BUNDLE',
+  ELECTRICITY_BILL: 'ELECTRICITY_BILL',
+} as const;
+export type FinancialRequestType = (typeof FinancialRequestType)[keyof typeof FinancialRequestType];
+export const financialRequestTypeSchema = z.nativeEnum(FinancialRequestType);
+
+export const PaymentProvider = {
+  NONE: 'NONE',
+  NOMBA: 'NOMBA',
+  MONNIFY: 'MONNIFY',
+} as const;
+export type PaymentProvider = (typeof PaymentProvider)[keyof typeof PaymentProvider];
+export const paymentProviderSchema = z.nativeEnum(PaymentProvider);
+
+export const ProviderStatus = {
+  NOT_INITIATED: 'NOT_INITIATED',
+  PROCESSING: 'PROCESSING',
+  SUCCESS: 'SUCCESS',
+  FAILED: 'FAILED',
+} as const;
+export type ProviderStatus = (typeof ProviderStatus)[keyof typeof ProviderStatus];
+export const providerStatusSchema = z.nativeEnum(ProviderStatus);
+
+export const ExpensePaymentStatus = {
+  PAID: 'PAID',
+  APPROVED_NOT_PAID: 'APPROVED_NOT_PAID',
+  PROCESSING: 'PROCESSING',
+  FAILED: 'FAILED',
+} as const;
+export type ExpensePaymentStatus = (typeof ExpensePaymentStatus)[keyof typeof ExpensePaymentStatus];
+export const expensePaymentStatusSchema = z.nativeEnum(ExpensePaymentStatus);
+
+export const StaffDepartment = {
+  FARM: 'FARM',
+  SHOP: 'SHOP',
+  HR: 'HR',
+  ASSETS: 'ASSETS',
+  CROPS: 'CROPS',
+  LIVESTOCK: 'LIVESTOCK',
+  FINANCE: 'FINANCE',
+  ADMIN: 'ADMIN',
+  OTHER: 'OTHER',
+} as const;
+export type StaffDepartment = (typeof StaffDepartment)[keyof typeof StaffDepartment];
+export const staffDepartmentSchema = z.nativeEnum(StaffDepartment);
+
+export const StaffStatus = {
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+  SUSPENDED: 'SUSPENDED',
+  LEFT: 'LEFT',
+} as const;
+export type StaffStatus = (typeof StaffStatus)[keyof typeof StaffStatus];
+export const staffStatusSchema = z.nativeEnum(StaffStatus);
+
+export const RequestEntityType = {
+  STOCK_REQUEST: 'STOCK_REQUEST',
+  FINANCIAL_REQUEST: 'FINANCIAL_REQUEST',
+  STAFF: 'STAFF',
+  GENERAL: 'GENERAL',
+} as const;
+export type RequestEntityType = (typeof RequestEntityType)[keyof typeof RequestEntityType];
+export const requestEntityTypeSchema = z.nativeEnum(RequestEntityType);
+
+export const NotificationType = {
+  REQUEST_SUBMITTED: 'REQUEST_SUBMITTED',
+  REQUEST_APPROVED: 'REQUEST_APPROVED',
+  REQUEST_DENIED: 'REQUEST_DENIED',
+  NEEDS_INFO: 'NEEDS_INFO',
+  REQUEST_UPDATED: 'REQUEST_UPDATED',
+  PAYMENT_STATUS: 'PAYMENT_STATUS',
+  GENERAL: 'GENERAL',
+} as const;
+export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
+export const notificationTypeSchema = z.nativeEnum(NotificationType);
+
+

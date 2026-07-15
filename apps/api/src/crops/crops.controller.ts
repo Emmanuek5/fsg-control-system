@@ -10,6 +10,7 @@ import {
   type CreateCropRotationDto,
   type UpdateCropDto,
 } from '@fsg/shared';
+import { CurrentUser, type RequestUser } from '../common/current-user.decorator';
 import { RequirePermissions } from '../common/require-permissions.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CropsService } from './crops.service';
@@ -41,7 +42,9 @@ export class CropsController {
 
   @Post('rotations')
   @RequirePermissions('crops:create')
-  createRotation(@Body(new ZodValidationPipe(createCropRotationSchema)) dto: CreateCropRotationDto) {
+  createRotation(
+    @Body(new ZodValidationPipe(createCropRotationSchema)) dto: CreateCropRotationDto,
+  ) {
     return this.crops.createRotation(dto);
   }
 
@@ -53,14 +56,14 @@ export class CropsController {
 
   @Get(':id')
   @RequirePermissions('crops:read')
-  get(@Param('id') id: string) {
-    return this.crops.get(id);
+  get(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.crops.get(user, id);
   }
 
   @Get(':id/inputs')
   @RequirePermissions('crops:read')
-  listInputs(@Param('id') id: string) {
-    return this.crops.listInputs(id);
+  listInputs(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.crops.listInputs(user, id);
   }
 
   @Get(':id/rotations')
@@ -77,7 +80,10 @@ export class CropsController {
 
   @Patch(':id')
   @RequirePermissions('crops:update')
-  update(@Param('id') id: string, @Body(new ZodValidationPipe(updateCropSchema)) dto: UpdateCropDto) {
+  update(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateCropSchema)) dto: UpdateCropDto,
+  ) {
     return this.crops.update(id, dto);
   }
 

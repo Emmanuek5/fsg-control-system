@@ -6,12 +6,26 @@ import type {
   SubsidiaryPerformancePoint,
 } from '@fsg/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { PermissionsService } from '../auth/permissions.service';
+import { AlertsService } from '../alerts/alerts.service';
+import type { RequestUser } from '../common/current-user.decorator';
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissions: PermissionsService,
+    private readonly alerts: AlertsService,
+  ) {}
 
-  async kpis(): Promise<DashboardKpis> {
+  async kpis(user: RequestUser): Promise<DashboardKpis> {
+    // dashboard:view alone shows operational KPIs; the money figures re-check
+    // the underlying visibility permissions so the dashboard can't leak what
+    // the modules themselves would deny.
+    const granted = user.roleId ? await this.permissions.getRolePermissions(user.roleId) : [];
+    const seesFinance = granted.includes('finance:read');
+    const seesLand = seesFinance && granted.includes('land:read');
+    const seesInvestments = granted.includes('investments:read');
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -63,14 +77,14 @@ export class DashboardService {
     }, 0);
 
     return {
-      totalStockValue,
-      salesToday: salesToday._sum.totalAmount ?? 0,
-      salesThisMonth: salesMonth._sum.totalAmount ?? 0,
+      totalStockValue: seesFinance ? totalStockValue : null,
+      salesToday: seesFinance ? (salesToday._sum.totalAmount ?? 0) : null,
+      salesThisMonth: seesFinance ? (salesMonth._sum.totalAmount ?? 0) : null,
       birdsAlive,
       eggsThisWeek: eggsWeek._sum.eggsCollected ?? 0,
       overdueMaintenance,
-      unpaidLandBalance,
-      investmentsNearingMaturity,
+      unpaidLandBalance: seesLand ? unpaidLandBalance : null,
+      investmentsNearingMaturity: seesInvestments ? investmentsNearingMaturity : null,
       activeAlerts,
     };
   }
@@ -103,7 +117,8 @@ export class DashboardService {
     return [...byDay.entries()].map(([date, eggs]) => ({ date, eggs }));
   }
 
-  async recentActivity(): Promise<RecentActivityItem[]> {
+  async recentActivity(user: RequestUser): Promise<RecentActivityItem[]> {
+    const seesFinance = await this.permissions.roleHas(user.roleId, 'finance:read');
     const [sales, movements] = await Promise.all([
       this.prisma.sale.findMany({
         take: 6,
@@ -122,7 +137,7 @@ export class DashboardService {
         id: `sale-${s.id}`,
         kind: 'sale',
         description: `Sold ${s.quantity} × ${s.product?.name ?? 'item'}`,
-        amount: s.totalAmount,
+        amount: seesFinance ? s.totalAmount : null,
         occurredAt: s.soldAt.toISOString(),
       })),
       ...movements.map((m) => ({
@@ -137,9 +152,12 @@ export class DashboardService {
     return items.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0, 8);
   }
 
-  urgentAlerts() {
+  async urgentAlerts(user: RequestUser) {
+    // Same policy as the alerts page: financial alert types stay hidden from
+    // users who can't read the underlying module.
+    const hidden = await this.alerts.hiddenAlertTypes(user.roleId);
     return this.prisma.alert.findMany({
-      where: { isResolved: false },
+      where: { isResolved: false, ...(hidden.length ? { type: { notIn: hidden } } : {}) },
       orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }],
       take: 8,
     });

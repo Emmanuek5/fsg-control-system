@@ -3,18 +3,11 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Pencil, Plus, Receipt, Trash2, Wallet } from 'lucide-react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { useChartColors } from '@/lib/chart-theme';
 import { fmtDate, naira, toDateInput } from '@/lib/format';
 import { PageHeader } from '@/components/page-header';
 import { KpiCard } from '@/components/kpi-card';
@@ -76,6 +69,7 @@ interface Summary {
 
 export default function ExpensesPage() {
   const { can } = useAuth();
+  const canSeeFinance = can('finance:read');
   const qc = useQueryClient();
   const [zoneFilter, setZoneFilter] = useState('');
 
@@ -92,6 +86,7 @@ export default function ExpensesPage() {
   const summaryQ = useQuery({
     queryKey: ['expense-summary'],
     queryFn: () => api.get<Summary>('/expenses/summary'),
+    enabled: canSeeFinance,
   });
 
   const remove = useMutation({
@@ -146,6 +141,7 @@ export default function ExpensesPage() {
   ];
 
   const s = summaryQ.data;
+  const chartColors = useChartColors();
 
   return (
     <div>
@@ -174,67 +170,94 @@ export default function ExpensesPage() {
         )}
       </PageHeader>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <KpiCard
-          title="Spent this month"
-          value={naira(s?.thisMonth ?? 0)}
-          icon={Wallet}
-          accent="bg-rose-100 text-rose-700"
-          loading={summaryQ.isLoading}
-        />
-        <KpiCard
-          title="Total recorded"
-          value={naira(s?.total ?? 0)}
-          icon={Receipt}
-          loading={summaryQ.isLoading}
-        />
-        <KpiCard
-          title="Top category"
-          value={s?.byCategory[0]?.category ?? '—'}
-          hint={s?.byCategory[0] ? naira(s.byCategory[0].total) : undefined}
-          icon={Receipt}
-          accent="bg-amber-100 text-amber-700"
-          loading={summaryQ.isLoading}
-        />
-      </div>
+      {canSeeFinance && (
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <KpiCard
+            title="Spent this month"
+            value={naira(s?.thisMonth ?? 0)}
+            icon={Wallet}
+            accent="terracotta"
+            loading={summaryQ.isLoading}
+          />
+          <KpiCard
+            title="Total recorded"
+            value={naira(s?.total ?? 0)}
+            icon={Receipt}
+            accent="primary"
+            loading={summaryQ.isLoading}
+          />
+          <KpiCard
+            title="Top category"
+            value={s?.byCategory[0]?.category ?? '—'}
+            hint={s?.byCategory[0] ? naira(s.byCategory[0].total) : undefined}
+            icon={Receipt}
+            accent="gold"
+            loading={summaryQ.isLoading}
+          />
+        </div>
+      )}
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-2">
-        <ChartCard title="By category">
-          <div className="h-64">
-            {summaryQ.isLoading ? (
-              <Skeleton className="h-full w-full" />
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={s?.byCategory ?? []} margin={{ left: 8, right: 8, top: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="category" tick={{ fontSize: 11 }} interval={0} angle={-15} height={48} textAnchor="end" />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v / 1000}k`} />
-                  <Tooltip formatter={(v: number) => naira(v)} />
-                  <Bar dataKey="total" fill="hsl(346 77% 50%)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </ChartCard>
+      {canSeeFinance && (
+        <div className="mb-6 grid gap-4 lg:grid-cols-2">
+          <ChartCard title="By category">
+            <div className="h-64">
+              {summaryQ.isLoading ? (
+                <Skeleton className="h-full w-full" />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={s?.byCategory ?? []} margin={{ left: 8, right: 8, top: 8 }}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke={chartColors.grid}
+                    />
+                    <XAxis
+                      dataKey="category"
+                      tick={{ fontSize: 11 }}
+                      interval={0}
+                      angle={-15}
+                      height={48}
+                      textAnchor="end"
+                    />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v / 1000}k`} />
+                    <Tooltip formatter={(v: number) => naira(v)} />
+                    <Bar dataKey="total" fill={chartColors.chart3} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </ChartCard>
 
-        <ChartCard title="By zone">
-          <div className="h-64">
-            {summaryQ.isLoading ? (
-              <Skeleton className="h-full w-full" />
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={s?.byZone ?? []} margin={{ left: 8, right: 8, top: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="zone" tick={{ fontSize: 11 }} interval={0} angle={-15} height={48} textAnchor="end" />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v / 1000}k`} />
-                  <Tooltip formatter={(v: number) => naira(v)} />
-                  <Bar dataKey="total" fill="hsl(221 83% 53%)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </ChartCard>
-      </div>
+          <ChartCard title="By zone">
+            <div className="h-64">
+              {summaryQ.isLoading ? (
+                <Skeleton className="h-full w-full" />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={s?.byZone ?? []} margin={{ left: 8, right: 8, top: 8 }}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke={chartColors.grid}
+                    />
+                    <XAxis
+                      dataKey="zone"
+                      tick={{ fontSize: 11 }}
+                      interval={0}
+                      angle={-15}
+                      height={48}
+                      textAnchor="end"
+                    />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v / 1000}k`} />
+                    <Tooltip formatter={(v: number) => naira(v)} />
+                    <Bar dataKey="total" fill={chartColors.chart1} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </ChartCard>
+        </div>
+      )}
 
       <div className="mb-4 max-w-xs">
         <Label className="mb-1.5 block text-xs text-muted-foreground">Filter by zone</Label>
@@ -290,7 +313,9 @@ function ExpenseDialog({
         description: form.description || null,
         receiptUrl: form.receiptUrl,
       };
-      return expense ? api.patch(`/expenses/${expense.id}`, payload) : api.post('/expenses', payload);
+      return expense
+        ? api.patch(`/expenses/${expense.id}`, payload)
+        : api.post('/expenses', payload);
     },
     onSuccess: async () => {
       toast.success(expense ? 'Expense updated' : 'Expense recorded');
@@ -357,7 +382,10 @@ function ExpenseDialog({
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Vendor</Label>
-            <Input value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} />
+            <Input
+              value={form.vendor}
+              onChange={(e) => setForm({ ...form, vendor: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Description</Label>

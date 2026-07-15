@@ -8,13 +8,26 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, offline } = useAuth();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) router.replace('/login');
-  }, [loading, user, router]);
+    // Only redirect on a genuine loss of session — never while the API is just
+    // unreachable, or the presence cookie bounces us back into a spinner loop.
+    if (!loading && !user && !offline) router.replace('/login');
+  }, [loading, user, offline, router]);
+
+  if (offline) {
+    return (
+      <div className="grid min-h-screen place-items-center">
+        <div className="flex flex-col items-center gap-3 text-center text-muted-foreground">
+          <Loader2 className="size-6 animate-spin" />
+          <p className="text-sm">Reconnecting to the server…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !user) {
     return (
