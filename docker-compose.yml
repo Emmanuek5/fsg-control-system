@@ -1,33 +1,28 @@
 # Full stack: Postgres + Nest API + Next.js web
 #
-# Local (all services):
-#   docker compose up -d --build
+# Coolify / production: use this file as-is.
+# No host ports are published — services talk on the internal `fsg` network.
+# Coolify (or any reverse proxy) routes public domains to container ports.
 #
-# Local DB only (pnpm dev against host Node):
-#   docker compose up -d postgres
-#   # or: pnpm db:up
+# Local full stack (publish 3000 / 4000 / 5432 on the host):
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+#   # or: pnpm docker:up
 #
-# First-time seed (optional — sample users/data):
-#   pnpm docker:seed
-#   # or keep seeding on every API start (not for production):
-#   SEED_ON_START=true docker compose up -d api
-#
-# Coolify: point the resource at this compose file, set env vars below,
-# and map domains to the `web` (and optionally `api` for webhooks) services.
+# Local DB only (pnpm dev on the host):
+#   pnpm db:up
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: fsg-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-fsg}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fsg_password}
       POSTGRES_DB: ${POSTGRES_DB:-fsg_control}
-    # Publish only when needed for host-side tooling (Prisma Studio, pnpm dev).
-    # Inside the compose network, services use hostname `postgres`.
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # Internal only — not published to the host. Reachable as hostname `postgres`
+    # on the compose network (api → postgres:5432).
+    expose:
+      - "5432"
     volumes:
       - fsg_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -42,14 +37,14 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    container_name: fsg-api
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       NODE_ENV: ${NODE_ENV:-production}
-      PORT: ${API_PORT:-4000}
+      # Container-internal listen port (Coolify proxies to this)
+      PORT: 4000
       # Always use the compose service hostname so a host-side DATABASE_URL
       # (localhost) in .env does not break the container network.
       DATABASE_URL: postgresql://${POSTGRES_USER:-fsg}:${POSTGRES_PASSWORD:-fsg_password}@postgres:5432/${POSTGRES_DB:-fsg_control}?schema=public
@@ -72,8 +67,9 @@ services:
       MONNIFY_WEBHOOK_SECRET: ${MONNIFY_WEBHOOK_SECRET:-}
       MONNIFY_ENV: ${MONNIFY_ENV:-sandbox}
       MONNIFY_BILLS_ENABLED: ${MONNIFY_BILLS_ENABLED:-false}
-    ports:
-      - "${API_PORT:-4000}:4000"
+    # Internal only — Coolify proxies to container port 4000
+    expose:
+      - "4000"
     volumes:
       - api_uploads:/app/apps/api/uploads
     healthcheck:
@@ -98,7 +94,6 @@ services:
       args:
         # Baked into the client bundle — must be the URL browsers use to reach the API
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
-    container_name: fsg-web
     restart: unless-stopped
     depends_on:
       api:
@@ -107,8 +102,9 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       HOSTNAME: 0.0.0.0
-    ports:
-      - "${WEB_PORT:-3000}:3000"
+    # Internal only — Coolify proxies to container port 3000
+    expose:
+      - "3000"
     healthcheck:
       test:
         [

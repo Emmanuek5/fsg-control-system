@@ -8,17 +8,17 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
-    "db:up": "docker compose up -d postgres",
-    "db:down": "docker compose down",
+    "db:up": "docker compose -f docker-compose.yml -f docker-compose.local.yml up -d postgres",
+    "db:down": "docker compose -f docker-compose.yml -f docker-compose.local.yml down",
     "db:migrate": "pnpm --filter @fsg/api migrate",
     "db:generate": "pnpm --filter @fsg/api generate",
     "db:seed": "pnpm --filter @fsg/api db:seed",
     "db:studio": "pnpm --filter @fsg/api studio",
     "db:reset": "pnpm --filter @fsg/api reset",
-    "docker:up": "docker compose up -d --build",
-    "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f",
-    "docker:seed": "docker compose run --rm -e SEED_ONLY=true api"
+    "docker:up": "docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build",
+    "docker:down": "docker compose -f docker-compose.yml -f docker-compose.local.yml down",
+    "docker:logs": "docker compose -f docker-compose.yml -f docker-compose.local.yml logs -f",
+    "docker:seed": "docker compose -f docker-compose.yml -f docker-compose.local.yml run --rm -e SEED_ONLY=true api"
   },
   "devDependencies": {
     "prettier": "^3.3.3",
