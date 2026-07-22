@@ -37,3 +37,4 @@ Thumbs.db
 
 # prisma
 apps/api/prisma/*.db
+.coolify.json

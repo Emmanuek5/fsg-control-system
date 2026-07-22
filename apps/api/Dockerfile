@@ -25,8 +25,9 @@ COPY apps/api ./apps/api
 RUN pnpm --filter @fsg/shared build \
   && pnpm --filter @fsg/api exec prisma generate \
   && pnpm --filter @fsg/api build \
-  # Sanity: image must ship Prisma 6 (schema uses datasource url = env(...))
-  && /app/node_modules/.bin/prisma -v
+  # Sanity: image must ship Prisma 6 (schema uses datasource url = env(...)).
+  # The bin shim lives in the api package's node_modules, not the workspace root.
+  && pnpm --filter @fsg/api exec prisma -v
 
 # ── Production runtime ─────────────────────────────────────────────────────
 FROM base AS runner
@@ -39,6 +40,8 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+# Per-package bin shims (prisma lives here, not in the root .bin)
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder /app/apps/api/tsconfig.json ./apps/api/tsconfig.json
