@@ -2,7 +2,8 @@
 # NestJS API image for the FSG monorepo. Build from repo root:
 #   docker build -f apps/api/Dockerfile .
 
-FROM node:20-alpine AS base
+# pnpm 11 requires Node >= 22.13 (uses node:sqlite)
+FROM node:22-alpine AS base
 RUN apk add --no-cache libc6-compat openssl
 RUN corepack enable && corepack prepare pnpm@11.8.0 --activate
 WORKDIR /app

@@ -4,7 +4,8 @@
 #
 # NEXT_PUBLIC_* is inlined at build time — set the public browser-facing API URL.
 
-FROM node:20-alpine AS base
+# pnpm 11 requires Node >= 22.13 (uses node:sqlite)
+FROM node:22-alpine AS base
 RUN apk add --no-cache libc6-compat
 RUN corepack enable && corepack prepare pnpm@11.8.0 --activate
 WORKDIR /app
@@ -31,7 +32,7 @@ RUN pnpm --filter @fsg/shared build \
   && pnpm --filter @fsg/web build
 
 # ── Production runtime (standalone) ────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
