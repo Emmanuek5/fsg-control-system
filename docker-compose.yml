@@ -72,18 +72,14 @@ services:
       - "4000"
     volumes:
       - api_uploads:/app/apps/api/uploads
+    # Also defined in Dockerfile; kept here so compose shows status clearly.
+    # start_period covers migrate + cold Nest boot.
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "require('http').get('http://127.0.0.1:4000/api/docs',(r)=>process.exit(r.statusCode&&r.statusCode<500?0:1)).on('error',()=>process.exit(1))",
-        ]
-      interval: 15s
+      test: ["CMD", "node", "/app/apps/api/healthcheck.js"]
+      interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 40s
+      retries: 12
+      start_period: 120s
     networks:
       - fsg
 
@@ -97,7 +93,8 @@ services:
     restart: unless-stopped
     depends_on:
       api:
-        condition: service_healthy
+        # Don't block web forever if API health is slow; API still restarts on failure
+        condition: service_started
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
@@ -111,12 +108,12 @@ services:
           "CMD",
           "node",
           "-e",
-          "require('http').get('http://127.0.0.1:3000/',(r)=>process.exit(r.statusCode&&r.statusCode<500?0:1)).on('error',()=>process.exit(1))",
+          "require('http').get('http://127.0.0.1:3000/',(r)=>{r.resume();process.exit(r.statusCode&&r.statusCode<500?0:1)}).on('error',()=>process.exit(1))",
         ]
       interval: 15s
       timeout: 5s
       retries: 8
-      start_period: 20s
+      start_period: 30s
     networks:
       - fsg
 

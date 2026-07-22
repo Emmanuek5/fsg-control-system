@@ -50,8 +50,12 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const port = Number(process.env.PORT ?? 4000);
-  await app.listen(port);
-  Logger.log(`API running on http://localhost:${port}/api (docs at /api/docs)`, 'Bootstrap');
+  // Bind all interfaces so Docker healthchecks and reverse proxies can reach us.
+  await app.listen(port, '0.0.0.0');
+  Logger.log(`API running on http://0.0.0.0:${port}/api (docs at /api/docs)`, 'Bootstrap');
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('Fatal bootstrap error:', err);
+  process.exit(1);
+});

@@ -29,6 +29,7 @@ import { StaffModule } from './staff/staff.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { MonnifyModule } from './monnify/monnify.module';
 import { AuditInterceptor } from './audit/audit.interceptor';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { AuditInterceptor } from './audit/audit.interceptor';
     WebhooksModule,
     MonnifyModule,
   ],
+  controllers: [HealthController],
   providers: [
     // Order matters: authenticate first, then authorize by permission.
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -24,7 +24,9 @@ COPY apps/api ./apps/api
 
 RUN pnpm --filter @fsg/shared build \
   && pnpm --filter @fsg/api exec prisma generate \
-  && pnpm --filter @fsg/api build
+  && pnpm --filter @fsg/api build \
+  # Sanity: image must ship Prisma 6 (schema uses datasource url = env(...))
+  && /app/node_modules/.bin/prisma -v
 
 # ── Production runtime ─────────────────────────────────────────────────────
 FROM base AS runner
@@ -40,6 +42,7 @@ COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder /app/apps/api/tsconfig.json ./apps/api/tsconfig.json
+COPY --from=builder /app/apps/api/healthcheck.js ./apps/api/healthcheck.js
 
 WORKDIR /app/apps/api
 RUN mkdir -p uploads
@@ -48,5 +51,9 @@ COPY apps/api/docker-entrypoint.sh /docker-entrypoint.sh
 # Normalize Windows CRLF if the file was checked out on Windows
 RUN sed -i 's/\r$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
 
+ENV PORT=4000
 EXPOSE 4000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=10 \
+  CMD node /app/apps/api/healthcheck.js
 ENTRYPOINT ["/docker-entrypoint.sh"]
+
