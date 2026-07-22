@@ -39,6 +39,8 @@ COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.ya
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+# Shared's own runtime deps (zod) resolve through its package-local node_modules
+COPY --from=builder /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 # Per-package bin shims (prisma lives here, not in the root .bin)
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
