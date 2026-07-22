@@ -1,21 +1,133 @@
+# Full stack: Postgres + Nest API + Next.js web
+#
+# Local (all services):
+#   docker compose up -d --build
+#
+# Local DB only (pnpm dev against host Node):
+#   docker compose up -d postgres
+#   # or: pnpm db:up
+#
+# First-time seed (optional — sample users/data):
+#   pnpm docker:seed
+#   # or keep seeding on every API start (not for production):
+#   SEED_ON_START=true docker compose up -d api
+#
+# Coolify: point the resource at this compose file, set env vars below,
+# and map domains to the `web` (and optionally `api` for webhooks) services.
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: fsg-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: fsg
-      POSTGRES_PASSWORD: fsg_password
-      POSTGRES_DB: fsg_control
+      POSTGRES_USER: ${POSTGRES_USER:-fsg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fsg_password}
+      POSTGRES_DB: ${POSTGRES_DB:-fsg_control}
+    # Publish only when needed for host-side tooling (Prisma Studio, pnpm dev).
+    # Inside the compose network, services use hostname `postgres`.
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - fsg_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fsg -d fsg_control"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fsg} -d ${POSTGRES_DB:-fsg_control}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - fsg
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: fsg-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${API_PORT:-4000}
+      # Always use the compose service hostname so a host-side DATABASE_URL
+      # (localhost) in .env does not break the container network.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fsg}:${POSTGRES_PASSWORD:-fsg_password}@postgres:5432/${POSTGRES_DB:-fsg_control}?schema=public
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      UPLOAD_DIR: ${UPLOAD_DIR:-uploads}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_change_me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_change_me}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      # true when the site is served over HTTPS (Coolify / production)
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # set true once to load roles/users/sample data, then turn off
+      SEED_ON_START: ${SEED_ON_START:-false}
+      # Monnify (optional)
+      MONNIFY_BASE_URL: ${MONNIFY_BASE_URL:-https://sandbox.monnify.com}
+      MONNIFY_API_KEY: ${MONNIFY_API_KEY:-}
+      MONNIFY_SECRET_KEY: ${MONNIFY_SECRET_KEY:-}
+      MONNIFY_CONTRACT_CODE: ${MONNIFY_CONTRACT_CODE:-}
+      MONNIFY_WALLET_ACCOUNT_NUMBER: ${MONNIFY_WALLET_ACCOUNT_NUMBER:-}
+      MONNIFY_WEBHOOK_SECRET: ${MONNIFY_WEBHOOK_SECRET:-}
+      MONNIFY_ENV: ${MONNIFY_ENV:-sandbox}
+      MONNIFY_BILLS_ENABLED: ${MONNIFY_BILLS_ENABLED:-false}
+    ports:
+      - "${API_PORT:-4000}:4000"
+    volumes:
+      - api_uploads:/app/apps/api/uploads
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:4000/api/docs',(r)=>process.exit(r.statusCode&&r.statusCode<500?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - fsg
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Baked into the client bundle — must be the URL browsers use to reach the API
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+    container_name: fsg-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:3000/',(r)=>process.exit(r.statusCode&&r.statusCode<500?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    networks:
+      - fsg
 
 volumes:
   fsg_pgdata:
+  api_uploads:
+
+networks:
+  fsg:
+    driver: bridge

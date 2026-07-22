@@ -24,10 +24,12 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   private setRefreshCookie(res: Response, token: string) {
+    // Set COOKIE_SECURE=true behind HTTPS (e.g. Coolify). Leave false for plain HTTP.
+    const secure = process.env.COOKIE_SECURE === 'true';
     res.cookie(REFRESH_COOKIE, token, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: false,
+      secure,
       path: REFRESH_PATH,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
