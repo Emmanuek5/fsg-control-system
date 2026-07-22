@@ -3,6 +3,9 @@ set -e
 
 cd /app/apps/api
 
+# prisma db seed spawns `ts-node` by bare name — it must be on PATH
+export PATH="/app/apps/api/node_modules/.bin:$PATH"
+
 # Prefer the workspace-installed Prisma 6 binary. Never use bare `npx prisma`
 # — that can download the latest major (Prisma 7) which breaks this schema.
 if [ -x /app/node_modules/.bin/prisma ]; then

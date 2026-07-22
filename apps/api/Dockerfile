@@ -36,6 +36,8 @@ WORKDIR /app
 
 # Hoisted monorepo layout: everything resolves from /app/node_modules
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/.npmrc ./
+# apps/api/tsconfig.json extends this; ts-node (prisma db seed) needs it
+COPY --from=builder /app/tsconfig.base.json ./tsconfig.base.json
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
