@@ -1,11 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import {
-  ALL_PERMISSIONS,
-  ALL_PERMISSION_KEYS,
-  DEFAULT_ROLES,
-  SubsidiaryType,
-} from '@fsg/shared';
+import { ALL_PERMISSIONS, ALL_PERMISSION_KEYS, DEFAULT_ROLES, SubsidiaryType } from '@fsg/shared';
 
 const prisma = new PrismaClient();
 
@@ -56,7 +51,12 @@ async function seedAccessControl() {
     await prisma.user.upsert({
       where: { email: u.email },
       update: { name: u.name, roleId: roleByName.get(u.role) ?? null },
-      create: { name: u.name, email: u.email, passwordHash, roleId: roleByName.get(u.role) ?? null },
+      create: {
+        name: u.name,
+        email: u.email,
+        passwordHash,
+        roleId: roleByName.get(u.role) ?? null,
+      },
     });
   }
 
@@ -69,6 +69,12 @@ async function seedBusinessData() {
     console.log('Business data already present — skipping sample data.');
     return;
   }
+
+  const [admin, manager, staff] = await Promise.all([
+    prisma.user.findUniqueOrThrow({ where: { email: 'admin@fsg.local' } }),
+    prisma.user.findUniqueOrThrow({ where: { email: 'manager@fsg.local' } }),
+    prisma.user.findUniqueOrThrow({ where: { email: 'staff@fsg.local' } }),
+  ]);
 
   // ─── Subsidiaries ───────────────────────────────────────────────────────
   const shop = await prisma.subsidiary.create({
@@ -96,6 +102,13 @@ async function seedBusinessData() {
     data: { name: 'Investments', type: SubsidiaryType.INVESTMENTS },
   });
 
+  const [farmProduceCategory, poultryCategory, grainsCategory, feedCategory] = await Promise.all([
+    prisma.category.create({ data: { name: 'Farm Produce' } }),
+    prisma.category.create({ data: { name: 'Poultry' } }),
+    prisma.category.create({ data: { name: 'Grains' } }),
+    prisma.category.create({ data: { name: 'Feed' } }),
+  ]);
+
   // ─── Products (online shop + farm produce) ──────────────────────────────
   const products = await Promise.all([
     prisma.product.create({
@@ -103,7 +116,7 @@ async function seedBusinessData() {
         subsidiaryId: shop.id,
         name: 'Crate of Eggs (30s)',
         sku: 'EGG-30',
-        category: 'Farm Produce',
+        categoryId: farmProduceCategory.id,
         unit: 'crate',
         unitPrice: 2800,
         costPrice: 1800,
@@ -116,7 +129,7 @@ async function seedBusinessData() {
         subsidiaryId: shop.id,
         name: 'Dressed Broiler (1.8kg)',
         sku: 'BRO-18',
-        category: 'Poultry',
+        categoryId: poultryCategory.id,
         unit: 'pcs',
         unitPrice: 6500,
         costPrice: 4200,
@@ -129,7 +142,7 @@ async function seedBusinessData() {
         subsidiaryId: shop.id,
         name: 'Bag of Maize (50kg)',
         sku: 'MAZ-50',
-        category: 'Grains',
+        categoryId: grainsCategory.id,
         unit: 'bag',
         unitPrice: 32000,
         costPrice: 24000,
@@ -142,7 +155,7 @@ async function seedBusinessData() {
         subsidiaryId: shop.id,
         name: 'Layer Feed (25kg)',
         sku: 'FEED-25',
-        category: 'Feed',
+        categoryId: feedCategory.id,
         unit: 'bag',
         unitPrice: 14500,
         costPrice: 11000,
@@ -155,20 +168,96 @@ async function seedBusinessData() {
   // ─── Inventory movements ────────────────────────────────────────────────
   await prisma.inventoryMovement.createMany({
     data: [
-      { productId: products[0].id, type: 'IN', quantity: 150, unitCost: 1800, reference: 'Farm transfer', occurredAt: daysAgo(3) },
-      { productId: products[0].id, type: 'OUT', quantity: 30, reference: 'Online orders', occurredAt: daysAgo(1) },
-      { productId: products[2].id, type: 'IN', quantity: 80, unitCost: 24000, reference: 'Supplier delivery', occurredAt: daysAgo(5) },
+      {
+        productId: products[0].id,
+        type: 'IN',
+        quantity: 150,
+        unitCost: 1800,
+        reference: 'Farm transfer',
+        occurredAt: daysAgo(3),
+      },
+      {
+        productId: products[0].id,
+        type: 'OUT',
+        quantity: 30,
+        reference: 'Online orders',
+        occurredAt: daysAgo(1),
+      },
+      {
+        productId: products[2].id,
+        type: 'IN',
+        quantity: 80,
+        unitCost: 24000,
+        reference: 'Supplier delivery',
+        occurredAt: daysAgo(5),
+      },
     ],
   });
 
   // ─── Sales (today + this month) ─────────────────────────────────────────
   await prisma.sale.createMany({
     data: [
-      { subsidiaryId: shop.id, productId: products[0].id, quantity: 10, unitPrice: 2800, totalAmount: 28000, channel: 'ONLINE', customer: 'Walk-in', soldAt: new Date() },
-      { subsidiaryId: shop.id, productId: products[1].id, quantity: 5, unitPrice: 6500, totalAmount: 32500, channel: 'ONLINE', customer: 'Mrs. Ade', soldAt: new Date() },
-      { subsidiaryId: shop.id, productId: products[2].id, quantity: 3, unitPrice: 32000, totalAmount: 96000, channel: 'WHOLESALE', customer: 'Grace Stores', soldAt: daysAgo(2) },
-      { subsidiaryId: layers.id, productId: products[0].id, quantity: 40, unitPrice: 2800, totalAmount: 112000, channel: 'WHOLESALE', customer: 'Market vendor', soldAt: daysAgo(6) },
-      { subsidiaryId: broilers.id, productId: products[1].id, quantity: 20, unitPrice: 6500, totalAmount: 130000, channel: 'IN_STORE', customer: 'Hotel order', soldAt: daysAgo(9) },
+      {
+        subsidiaryId: shop.id,
+        productId: products[0].id,
+        quantity: 10,
+        unitPrice: 2800,
+        totalAmount: 28000,
+        channel: 'ONLINE',
+        customer: 'Walk-in',
+        soldAt: new Date(),
+        createdById: staff.id,
+      },
+      {
+        subsidiaryId: shop.id,
+        productId: products[1].id,
+        quantity: 5,
+        unitPrice: 6500,
+        totalAmount: 32500,
+        channel: 'ONLINE',
+        customer: 'Mrs. Ade',
+        soldAt: new Date(),
+        createdById: staff.id,
+      },
+      {
+        subsidiaryId: shop.id,
+        productId: products[2].id,
+        quantity: 3,
+        unitPrice: 32000,
+        totalAmount: 96000,
+        channel: 'WHOLESALE',
+        customer: 'Grace Stores',
+        soldAt: daysAgo(2),
+        createdById: manager.id,
+        verifiedAt: daysAgo(1),
+        verifiedById: admin.id,
+      },
+      {
+        subsidiaryId: layers.id,
+        productId: products[0].id,
+        quantity: 40,
+        unitPrice: 2800,
+        totalAmount: 112000,
+        channel: 'WHOLESALE',
+        customer: 'Market vendor',
+        soldAt: daysAgo(6),
+        createdById: manager.id,
+        verifiedAt: daysAgo(5),
+        verifiedById: admin.id,
+      },
+      {
+        subsidiaryId: broilers.id,
+        productId: products[1].id,
+        quantity: 20,
+        unitPrice: 6500,
+        totalAmount: 130000,
+        channel: 'IN_STORE',
+        customer: 'Hotel order',
+        soldAt: daysAgo(9),
+        createdById: manager.id,
+        verifiedAt: daysAgo(8),
+        verifiedById: admin.id,
+      },
     ],
   });
 
@@ -223,25 +312,84 @@ async function seedBusinessData() {
 
   await prisma.feedRecord.createMany({
     data: [
-      { batchId: layerBatch.id, date: daysAgo(7), feedType: 'Layer mash', quantityKg: 350, cost: 154000 },
-      { batchId: broilerBatch.id, date: daysAgo(4), feedType: 'Broiler finisher', quantityKg: 500, cost: 230000 },
+      {
+        batchId: layerBatch.id,
+        date: daysAgo(7),
+        feedType: 'Layer mash',
+        quantityKg: 350,
+        cost: 154000,
+      },
+      {
+        batchId: broilerBatch.id,
+        date: daysAgo(4),
+        feedType: 'Broiler finisher',
+        quantityKg: 500,
+        cost: 230000,
+      },
     ],
   });
 
   // ─── Crops ───────────────────────────────────────────────────────────────
   await prisma.crop.createMany({
     data: [
-      { subsidiaryId: cropsDiv.id, name: 'Maize', variety: 'SAMMAZ 15', plot: 'Field 1', areaHectares: 5, plantingDate: daysAgo(60), expectedHarvest: daysFromNow(40), expectedYield: 18, status: 'GROWING' },
-      { subsidiaryId: cropsDiv.id, name: 'Tomatoes', variety: 'Roma VF', plot: 'Greenhouse 2', areaHectares: 1.5, plantingDate: daysAgo(30), expectedHarvest: daysFromNow(20), expectedYield: 25, status: 'GROWING' },
+      {
+        subsidiaryId: cropsDiv.id,
+        name: 'Maize',
+        variety: 'SAMMAZ 15',
+        plot: 'Field 1',
+        areaHectares: 5,
+        plantingDate: daysAgo(60),
+        expectedHarvest: daysFromNow(40),
+        expectedYield: 18,
+        status: 'GROWING',
+      },
+      {
+        subsidiaryId: cropsDiv.id,
+        name: 'Tomatoes',
+        variety: 'Roma VF',
+        plot: 'Greenhouse 2',
+        areaHectares: 1.5,
+        plantingDate: daysAgo(30),
+        expectedHarvest: daysFromNow(20),
+        expectedYield: 25,
+        status: 'GROWING',
+      },
     ],
   });
 
   // ─── Livestock ─────────────────────────────────────────────────────────
   await prisma.livestock.createMany({
     data: [
-      { subsidiaryId: livestockDiv.id, species: 'Cattle', tagNumber: 'CTL-001', breed: 'White Fulani', sex: 'FEMALE', acquisitionCost: 320000, weightKg: 280, status: 'ALIVE' },
-      { subsidiaryId: livestockDiv.id, species: 'Goat', tagNumber: 'GT-014', breed: 'Red Sokoto', sex: 'MALE', acquisitionCost: 45000, weightKg: 32, status: 'ALIVE' },
-      { subsidiaryId: livestockDiv.id, species: 'Cattle', tagNumber: 'CTL-002', breed: 'White Fulani', sex: 'MALE', acquisitionCost: 350000, weightKg: 310, status: 'SOLD' },
+      {
+        subsidiaryId: livestockDiv.id,
+        species: 'Cattle',
+        tagNumber: 'CTL-001',
+        breed: 'White Fulani',
+        sex: 'FEMALE',
+        acquisitionCost: 320000,
+        weightKg: 280,
+        status: 'ALIVE',
+      },
+      {
+        subsidiaryId: livestockDiv.id,
+        species: 'Goat',
+        tagNumber: 'GT-014',
+        breed: 'Red Sokoto',
+        sex: 'MALE',
+        acquisitionCost: 45000,
+        weightKg: 32,
+        status: 'ALIVE',
+      },
+      {
+        subsidiaryId: livestockDiv.id,
+        species: 'Cattle',
+        tagNumber: 'CTL-002',
+        breed: 'White Fulani',
+        sex: 'MALE',
+        acquisitionCost: 350000,
+        weightKg: 310,
+        status: 'SOLD',
+      },
     ],
   });
 
@@ -278,12 +426,41 @@ async function seedBusinessData() {
   await prisma.maintenanceLog.createMany({
     data: [
       // overdue (scheduled in the past, not completed)
-      { assetId: generator.id, type: 'Oil change & service', scheduledDate: daysAgo(6), cost: 45000, vendor: 'PowerFix Ltd', status: 'SCHEDULED' },
-      { assetId: truck.id, type: 'Tyre replacement', scheduledDate: daysAgo(2), cost: 180000, vendor: 'AutoCare', status: 'SCHEDULED' },
+      {
+        assetId: generator.id,
+        type: 'Oil change & service',
+        scheduledDate: daysAgo(6),
+        cost: 45000,
+        vendor: 'PowerFix Ltd',
+        status: 'SCHEDULED',
+      },
+      {
+        assetId: truck.id,
+        type: 'Tyre replacement',
+        scheduledDate: daysAgo(2),
+        cost: 180000,
+        vendor: 'AutoCare',
+        status: 'SCHEDULED',
+      },
       // upcoming
-      { assetId: truck.id, type: 'Full service', scheduledDate: daysFromNow(20), cost: 120000, vendor: 'AutoCare', status: 'SCHEDULED' },
+      {
+        assetId: truck.id,
+        type: 'Full service',
+        scheduledDate: daysFromNow(20),
+        cost: 120000,
+        vendor: 'AutoCare',
+        status: 'SCHEDULED',
+      },
       // completed
-      { assetId: generator.id, type: 'Filter replacement', scheduledDate: daysAgo(40), completedDate: daysAgo(38), cost: 25000, vendor: 'PowerFix Ltd', status: 'COMPLETED' },
+      {
+        assetId: generator.id,
+        type: 'Filter replacement',
+        scheduledDate: daysAgo(40),
+        completedDate: daysAgo(38),
+        cost: 25000,
+        vendor: 'PowerFix Ltd',
+        status: 'COMPLETED',
+      },
     ],
   });
 
@@ -301,8 +478,20 @@ async function seedBusinessData() {
   });
   await prisma.landPayment.createMany({
     data: [
-      { plotId: plot.id, amount: 10000000, paidAt: daysAgo(120), method: 'Bank transfer', reference: 'INV-001' },
-      { plotId: plot.id, amount: 5000000, paidAt: daysAgo(60), method: 'Bank transfer', reference: 'INV-002' },
+      {
+        plotId: plot.id,
+        amount: 10000000,
+        paidAt: daysAgo(120),
+        method: 'Bank transfer',
+        reference: 'INV-001',
+      },
+      {
+        plotId: plot.id,
+        amount: 5000000,
+        paidAt: daysAgo(60),
+        method: 'Bank transfer',
+        reference: 'INV-002',
+      },
     ],
   });
   // Fully-owned plot (no balance)
@@ -322,8 +511,28 @@ async function seedBusinessData() {
   // ─── Investments ─────────────────────────────────────────────────────────
   await prisma.investment.createMany({
     data: [
-      { name: 'GTBank Fixed Deposit', type: 'FIXED_DEPOSIT', institution: 'GTBank', principal: 5000000, interestRate: 12, startDate: daysAgo(160), maturityDate: daysFromNow(20), expectedReturn: 5600000, status: 'ACTIVE' },
-      { name: 'FGN Savings Bond', type: 'BONDS', institution: 'DMO', principal: 3000000, interestRate: 14, startDate: daysAgo(300), maturityDate: daysFromNow(400), expectedReturn: 4200000, status: 'ACTIVE' },
+      {
+        name: 'GTBank Fixed Deposit',
+        type: 'FIXED_DEPOSIT',
+        institution: 'GTBank',
+        principal: 5000000,
+        interestRate: 12,
+        startDate: daysAgo(160),
+        maturityDate: daysFromNow(20),
+        expectedReturn: 5600000,
+        status: 'ACTIVE',
+      },
+      {
+        name: 'FGN Savings Bond',
+        type: 'BONDS',
+        institution: 'DMO',
+        principal: 3000000,
+        interestRate: 14,
+        startDate: daysAgo(300),
+        maturityDate: daysFromNow(400),
+        expectedReturn: 4200000,
+        status: 'ACTIVE',
+      },
     ],
   });
 
@@ -344,25 +553,89 @@ async function seedBusinessData() {
   // ─── Expenses (across zones) ─────────────────────────────────────────────
   await prisma.expense.createMany({
     data: [
-      { subsidiaryId: layers.id, category: 'Feed', description: 'Layer mash', vendor: 'AgroFeeds', amount: 154000, incurredAt: daysAgo(7) },
-      { subsidiaryId: broilers.id, category: 'Feed', description: 'Broiler finisher', vendor: 'AgroFeeds', amount: 230000, incurredAt: daysAgo(4) },
-      { subsidiaryId: assetsDiv.id, category: 'Fuel', description: 'Diesel for generator', vendor: 'TotalEnergies', amount: 85000, incurredAt: daysAgo(3) },
-      { subsidiaryId: assetsDiv.id, category: 'Fuel', description: 'Diesel for delivery truck', vendor: 'TotalEnergies', amount: 60000, incurredAt: daysAgo(1) },
-      { subsidiaryId: shop.id, category: 'Utilities', description: 'Electricity bill', vendor: 'IKEDC', amount: 42000, incurredAt: daysAgo(10) },
-      { subsidiaryId: livestockDiv.id, category: 'Veterinary', description: 'Vaccinations & vet visit', vendor: 'VetCare', amount: 38000, incurredAt: daysAgo(6) },
-      { subsidiaryId: cropsDiv.id, category: 'Supplies', description: 'Fertilizer & seedlings', vendor: 'GreenGrow', amount: 95000, incurredAt: daysAgo(12) },
-      { category: 'Salaries', description: 'Casual labour wages', amount: 120000, incurredAt: daysAgo(2) },
+      {
+        subsidiaryId: layers.id,
+        category: 'Feed',
+        description: 'Layer mash',
+        vendor: 'AgroFeeds',
+        amount: 154000,
+        incurredAt: daysAgo(7),
+      },
+      {
+        subsidiaryId: broilers.id,
+        category: 'Feed',
+        description: 'Broiler finisher',
+        vendor: 'AgroFeeds',
+        amount: 230000,
+        incurredAt: daysAgo(4),
+      },
+      {
+        subsidiaryId: assetsDiv.id,
+        category: 'Fuel',
+        description: 'Diesel for generator',
+        vendor: 'TotalEnergies',
+        amount: 85000,
+        incurredAt: daysAgo(3),
+      },
+      {
+        subsidiaryId: assetsDiv.id,
+        category: 'Fuel',
+        description: 'Diesel for delivery truck',
+        vendor: 'TotalEnergies',
+        amount: 60000,
+        incurredAt: daysAgo(1),
+      },
+      {
+        subsidiaryId: shop.id,
+        category: 'Utilities',
+        description: 'Electricity bill',
+        vendor: 'IKEDC',
+        amount: 42000,
+        incurredAt: daysAgo(10),
+      },
+      {
+        subsidiaryId: livestockDiv.id,
+        category: 'Veterinary',
+        description: 'Vaccinations & vet visit',
+        vendor: 'VetCare',
+        amount: 38000,
+        incurredAt: daysAgo(6),
+      },
+      {
+        subsidiaryId: cropsDiv.id,
+        category: 'Supplies',
+        description: 'Fertilizer & seedlings',
+        vendor: 'GreenGrow',
+        amount: 95000,
+        incurredAt: daysAgo(12),
+      },
+      {
+        category: 'Salaries',
+        description: 'Casual labour wages',
+        amount: 120000,
+        incurredAt: daysAgo(2),
+      },
     ],
   });
 }
 
 async function main() {
+  // The seed rebuilds default role permissions, recreates the @fsg.local demo
+  // logins, and re-inserts sample business data on an emptied database — all
+  // destructive against a curated production DB. New permission keys reach
+  // existing databases via the API's startup catalog sync instead.
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_FORCE !== 'true') {
+    console.error('NODE_ENV=production — refusing to seed. Set SEED_FORCE=true to override.');
+    process.exit(1);
+  }
   console.log('Seeding access control (permissions, roles, users)...');
   await seedAccessControl();
   console.log('Seeding business sample data...');
   await seedBusinessData();
   console.log('Seed complete.');
-  console.log('Logins: admin@fsg.local / manager@fsg.local / staff@fsg.local  (password: password123)');
+  console.log(
+    'Logins: admin@fsg.local / manager@fsg.local / staff@fsg.local  (password: password123)',
+  );
 }
 
 main()
