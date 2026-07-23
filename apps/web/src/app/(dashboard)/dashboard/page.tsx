@@ -246,6 +246,7 @@ export default function DashboardPage() {
                       <p className="truncate text-sm">{item.description}</p>
                       <p className="text-xs text-muted-foreground">
                         {relativeTime(item.occurredAt)}
+                        {item.actor && ` · by ${item.actor}`}
                       </p>
                     </div>
                     {item.amount != null && (

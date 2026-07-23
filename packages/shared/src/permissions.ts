@@ -7,7 +7,15 @@
  * A permission key has the form `<resource>:<action>` (e.g. `products:create`).
  */
 
-export type PermissionAction = 'view' | 'read' | 'create' | 'update' | 'delete' | 'approve' | 'execute' | 'manage';
+export type PermissionAction =
+  | 'view'
+  | 'read'
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'approve'
+  | 'execute'
+  | 'manage';
 
 export interface PermissionResource {
   /** stable key used in permission strings, e.g. "products" */
@@ -60,7 +68,12 @@ export const PERMISSION_RESOURCES: PermissionResource[] = [
     description: 'Stock in / out / adjustment records',
     actions: CRUD,
   },
-  { key: 'sales', label: 'Sales', description: 'Sales transactions', actions: CRUD },
+  {
+    key: 'sales',
+    label: 'Sales',
+    description: 'Sales transactions',
+    actions: ['read', 'create', 'update', 'delete', 'approve'],
+  },
   {
     key: 'expenses',
     label: 'Expenses',
@@ -123,15 +136,30 @@ export const PERMISSION_RESOURCES: PermissionResource[] = [
     description: 'User-specific action notifications and read state',
     actions: ['read', 'update'],
   },
-  { key: 'staff', label: 'Staff', description: 'Staff profiles, assignments and bank details', actions: CRUD },
+  {
+    key: 'staff',
+    label: 'Staff',
+    description: 'Staff profiles, assignments and bank details',
+    actions: CRUD,
+  },
   {
     key: 'finance',
     label: 'Financial Insight',
     description: 'Company-wide financial visibility: costs, valuations, totals and summaries',
     actions: ['read'],
   },
-  { key: 'payments', label: 'Payments', description: 'Future provider payment execution', actions: ['read', 'execute'] },
-  { key: 'payroll', label: 'Payroll', description: 'Future payroll automation', actions: ['read', 'manage'] },
+  {
+    key: 'payments',
+    label: 'Payments',
+    description: 'Future provider payment execution',
+    actions: ['read', 'execute'],
+  },
+  {
+    key: 'payroll',
+    label: 'Payroll',
+    description: 'Future payroll automation',
+    actions: ['read', 'manage'],
+  },
   {
     key: 'subsidiaries',
     label: 'Subsidiaries',
@@ -210,7 +238,11 @@ const managerPermissions: string[] = [
   'dashboard:view',
   ...permissionsFor('products'),
   ...permissionsFor('inventory'),
-  ...permissionsFor('sales'),
+  'sales:read',
+  'sales:create',
+  'sales:update',
+  'sales:delete',
+  // End-of-day verification defaults to Admin only.
   ...permissionsFor('expenses'),
   ...permissionsFor('farm'),
   ...permissionsFor('crops'),
@@ -285,7 +317,3 @@ export const DEFAULT_ROLES: DefaultRoleDef[] = [
     permissions: staffPermissions,
   },
 ];
-
-
-
-

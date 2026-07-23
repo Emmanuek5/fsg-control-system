@@ -19,12 +19,19 @@ export class ProductsService {
               OR: [
                 { name: { contains: search, mode: 'insensitive' } },
                 { sku: { contains: search, mode: 'insensitive' } },
-                { category: { contains: search, mode: 'insensitive' } },
+                {
+                  category: {
+                    is: { name: { contains: search, mode: 'insensitive' } },
+                  },
+                },
               ],
             }
           : undefined,
         orderBy: { createdAt: 'desc' },
-        include: { subsidiary: { select: { id: true, name: true } } },
+        include: {
+          subsidiary: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true } },
+        },
       }),
       this.permissions.roleHas(user.roleId, 'finance:read'),
     ]);
@@ -38,7 +45,10 @@ export class ProductsService {
     const [product, seesFinance] = await Promise.all([
       this.prisma.product.findUniqueOrThrow({
         where: { id },
-        include: { subsidiary: { select: { id: true, name: true } } },
+        include: {
+          subsidiary: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true } },
+        },
       }),
       this.permissions.roleHas(user.roleId, 'finance:read'),
     ]);
@@ -51,7 +61,7 @@ export class ProductsService {
         subsidiaryId: dto.subsidiaryId ?? null,
         name: dto.name,
         sku: dto.sku ?? null,
-        category: dto.category ?? null,
+        categoryId: dto.categoryId ?? null,
         description: dto.description ?? null,
         unit: dto.unit ?? 'pcs',
         unitPrice: dto.unitPrice,

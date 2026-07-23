@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Check, Loader2, Pencil, Plus, Search, Tags, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, ApiError, fileUrl } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
@@ -29,11 +29,18 @@ interface Subsidiary {
   id: string;
   name: string;
 }
+interface Category {
+  id: string;
+  name: string;
+  description: string | null;
+  productCount: number;
+}
 interface Product {
   id: string;
   name: string;
   sku: string | null;
-  category: string | null;
+  categoryId: string | null;
+  category: { id: string; name: string } | null;
   description: string | null;
   unit: string;
   unitPrice: number;
@@ -60,13 +67,21 @@ export default function OnlineShopPage() {
     queryFn: () => api.get<Subsidiary[]>('/subsidiaries'),
     enabled: can('subsidiaries:read'),
   });
+  const categoriesQ = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => api.get<Category[]>('/categories'),
+    enabled: can('products:read'),
+  });
 
   const qc = useQueryClient();
   const deleteProduct = useMutation({
     mutationFn: (id: string) => api.del(`/products/${id}`),
     onSuccess: async () => {
       toast.success('Product deleted');
-      await qc.invalidateQueries({ queryKey: ['products'] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['categories'] }),
+        qc.invalidateQueries({ queryKey: ['products'] }),
+      ]);
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Delete failed'),
   });
@@ -93,7 +108,7 @@ export default function OnlineShopPage() {
         </div>
       ),
     },
-    { header: 'Category', cell: (p) => p.category ?? '—' },
+    { header: 'Category', cell: (p) => p.category?.name ?? '—' },
     {
       header: 'Price',
       cell: (p) => (
@@ -129,6 +144,7 @@ export default function OnlineShopPage() {
             <ProductDialog
               product={p}
               subsidiaries={subsQ.data ?? []}
+              categories={categoriesQ.data ?? []}
               trigger={
                 <Button variant="ghost" size="icon" aria-label="Edit">
                   <Pencil className="size-4" />
@@ -163,7 +179,7 @@ export default function OnlineShopPage() {
           columns={[
             { header: 'Name', value: (p) => p.name },
             { header: 'SKU', value: (p) => p.sku },
-            { header: 'Category', value: (p) => p.category },
+            { header: 'Category', value: (p) => p.category?.name },
             { header: 'Unit', value: (p) => p.unit },
             { header: 'Unit price', value: (p) => p.unitPrice },
             ...(canSeeFinance
@@ -174,9 +190,21 @@ export default function OnlineShopPage() {
             { header: 'Subsidiary', value: (p) => p.subsidiary?.name },
           ]}
         />
+        {(can('products:create') || can('products:update') || can('products:delete')) && (
+          <CategoriesDialog
+            categories={categoriesQ.data ?? []}
+            loading={categoriesQ.isLoading}
+            trigger={
+              <Button variant="outline">
+                <Tags className="size-4" /> Categories
+              </Button>
+            }
+          />
+        )}
         {can('products:create') && (
           <ProductDialog
             subsidiaries={subsQ.data ?? []}
+            categories={categoriesQ.data ?? []}
             trigger={
               <Button>
                 <Plus className="size-4" /> New product
@@ -209,10 +237,12 @@ export default function OnlineShopPage() {
 function ProductDialog({
   product,
   subsidiaries,
+  categories,
   trigger,
 }: {
   product?: Product;
   subsidiaries: Subsidiary[];
+  categories: Category[];
   trigger: React.ReactNode;
 }) {
   const { can } = useAuth();
@@ -223,7 +253,7 @@ function ProductDialog({
   const [form, setForm] = useState({
     name: product?.name ?? '',
     sku: product?.sku ?? '',
-    category: product?.category ?? '',
+    categoryId: product?.categoryId ?? '',
     unit: product?.unit ?? 'pcs',
     unitPrice: String(product?.unitPrice ?? ''),
     costPrice: String(product?.costPrice ?? ''),
@@ -238,7 +268,7 @@ function ProductDialog({
       const payload: Record<string, unknown> = {
         name: form.name,
         sku: form.sku || null,
-        category: form.category || null,
+        categoryId: form.categoryId || null,
         unit: form.unit || 'pcs',
         unitPrice: Number(form.unitPrice || 0),
         quantityOnHand: Number(form.quantityOnHand || 0),
@@ -253,7 +283,10 @@ function ProductDialog({
     },
     onSuccess: async () => {
       toast.success(product ? 'Product updated' : 'Product created');
-      await qc.invalidateQueries({ queryKey: ['products'] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['categories'] }),
+        qc.invalidateQueries({ queryKey: ['products'] }),
+      ]);
       setOpen(false);
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Save failed'),
@@ -277,10 +310,17 @@ function ProductDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Category</Label>
-            <Input
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-            />
+            <Select
+              value={form.categoryId}
+              onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+            >
+              <option value="">— None —</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label>Unit of measure</Label>
@@ -357,6 +397,195 @@ function ProductDialog({
             {product ? 'Save' : 'Create'}
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CategoriesDialog({
+  categories,
+  loading,
+  trigger,
+}: {
+  categories: Category[];
+  loading: boolean;
+  trigger: React.ReactNode;
+}) {
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+
+  const invalidate = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: ['categories'] }),
+      qc.invalidateQueries({ queryKey: ['products'] }),
+    ]);
+
+  const createCategory = useMutation({
+    mutationFn: () => api.post('/categories', { name: newName.trim() }),
+    onSuccess: async () => {
+      toast.success('Category created');
+      setNewName('');
+      await invalidate();
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Create failed'),
+  });
+
+  const renameCategory = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      api.patch(`/categories/${id}`, { name }),
+    onSuccess: async () => {
+      toast.success('Category renamed');
+      setEditingId(null);
+      setEditingName('');
+      await invalidate();
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Rename failed'),
+  });
+
+  const deleteCategory = useMutation({
+    mutationFn: (id: string) => api.del(`/categories/${id}`),
+    onSuccess: async () => {
+      toast.success('Category deleted');
+      await invalidate();
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Delete failed'),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Categories</DialogTitle>
+        </DialogHeader>
+
+        {can('products:create') && (
+          <div className="flex gap-2">
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newName.trim()) createCategory.mutate();
+              }}
+              placeholder="New category name"
+              maxLength={80}
+            />
+            <Button
+              onClick={() => createCategory.mutate()}
+              disabled={!newName.trim() || createCategory.isPending}
+            >
+              {createCategory.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Plus className="size-4" />
+              )}
+              Add
+            </Button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : categories.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">No categories yet.</p>
+        ) : (
+          <div className="max-h-80 space-y-2 overflow-y-auto">
+            {categories.map((category) => (
+              <div
+                key={category.id}
+                className="flex items-center justify-between gap-3 rounded-md border p-3"
+              >
+                {editingId === category.id ? (
+                  <Input
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    maxLength={80}
+                    autoFocus
+                  />
+                ) : (
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{category.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {num(category.productCount)}{' '}
+                      {category.productCount === 1 ? 'product' : 'products'}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex shrink-0 gap-1">
+                  {editingId === category.id ? (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Save category name"
+                        disabled={!editingName.trim() || renameCategory.isPending}
+                        onClick={() =>
+                          renameCategory.mutate({ id: category.id, name: editingName.trim() })
+                        }
+                      >
+                        {renameCategory.isPending ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Check className="size-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Cancel rename"
+                        onClick={() => {
+                          setEditingId(null);
+                          setEditingName('');
+                        }}
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      {can('products:update') && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Rename ${category.name}`}
+                          onClick={() => {
+                            setEditingId(category.id);
+                            setEditingName(category.name);
+                          }}
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                      )}
+                      {can('products:delete') && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive"
+                          aria-label={`Delete ${category.name}`}
+                          disabled={deleteCategory.isPending}
+                          onClick={() => {
+                            if (confirm(`Delete "${category.name}"?`)) {
+                              deleteCategory.mutate(category.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

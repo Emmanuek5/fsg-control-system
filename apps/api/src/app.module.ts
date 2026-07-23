@@ -10,7 +10,9 @@ import { RolesModule } from './roles/roles.module';
 import { UsersModule } from './users/users.module';
 import { SubsidiariesModule } from './subsidiaries/subsidiaries.module';
 import { ProductsModule } from './products/products.module';
+import { CategoriesModule } from './categories/categories.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { SalesModule } from './sales/sales.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { FarmModule } from './farm/farm.module';
@@ -41,7 +43,9 @@ import { HealthController } from './health/health.controller';
     UsersModule,
     SubsidiariesModule,
     ProductsModule,
+    CategoriesModule,
     InventoryModule,
+    SalesModule,
     DashboardModule,
     UploadsModule,
     FarmModule,
@@ -69,5 +73,3 @@ import { HealthController } from './health/health.controller';
   ],
 })
 export class AppModule {}
-
-

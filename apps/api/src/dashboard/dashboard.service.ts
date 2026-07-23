@@ -44,8 +44,14 @@ export class DashboardService {
       activeAlerts,
     ] = await Promise.all([
       this.prisma.product.findMany({ select: { quantityOnHand: true, costPrice: true } }),
-      this.prisma.sale.aggregate({ _sum: { totalAmount: true }, where: { soldAt: { gte: startOfDay } } }),
-      this.prisma.sale.aggregate({ _sum: { totalAmount: true }, where: { soldAt: { gte: startOfMonth } } }),
+      this.prisma.sale.aggregate({
+        _sum: { totalAmount: true },
+        where: { soldAt: { gte: startOfDay } },
+      }),
+      this.prisma.sale.aggregate({
+        _sum: { totalAmount: true },
+        where: { soldAt: { gte: startOfMonth } },
+      }),
       this.prisma.farmBatch.findMany({
         where: { status: 'ACTIVE' },
         select: { initialCount: true, mortalityRecords: { select: { count: true } } },
@@ -123,12 +129,18 @@ export class DashboardService {
       this.prisma.sale.findMany({
         take: 6,
         orderBy: { soldAt: 'desc' },
-        include: { product: { select: { name: true } } },
+        include: {
+          product: { select: { name: true } },
+          createdBy: { select: { name: true } },
+        },
       }),
       this.prisma.inventoryMovement.findMany({
         take: 6,
         orderBy: { occurredAt: 'desc' },
-        include: { product: { select: { name: true } } },
+        include: {
+          product: { select: { name: true } },
+          createdBy: { select: { name: true } },
+        },
       }),
     ]);
 
@@ -139,6 +151,7 @@ export class DashboardService {
         description: `Sold ${s.quantity} × ${s.product?.name ?? 'item'}`,
         amount: seesFinance ? s.totalAmount : null,
         occurredAt: s.soldAt.toISOString(),
+        actor: s.createdBy?.name ?? null,
       })),
       ...movements.map((m) => ({
         id: `mov-${m.id}`,
@@ -146,6 +159,7 @@ export class DashboardService {
         description: `Stock ${m.type} ${m.quantity} × ${m.product?.name ?? 'item'}`,
         amount: null,
         occurredAt: m.occurredAt.toISOString(),
+        actor: m.createdBy?.name ?? null,
       })),
     ];
 

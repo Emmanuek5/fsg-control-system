@@ -51,6 +51,7 @@ export interface RecentActivityItem {
   description: string;
   amount: number | null;
   occurredAt: string;
+  actor: string | null;
 }
 
 export interface Paginated<T> {

@@ -95,11 +95,20 @@ export type CreateSubsidiaryDto = z.infer<typeof createSubsidiarySchema>;
 
 // ─── Products ─────────────────────────────────────────────────────────────
 
+export const createCategorySchema = z.object({
+  name: z.string().min(1).max(80),
+  description: z.string().max(300).optional().nullable(),
+});
+export type CreateCategoryDto = z.infer<typeof createCategorySchema>;
+
+export const updateCategorySchema = createCategorySchema.partial();
+export type UpdateCategoryDto = z.infer<typeof updateCategorySchema>;
+
 export const createProductSchema = z.object({
   subsidiaryId: z.string().optional().nullable(),
   name: z.string().min(1).max(160),
   sku: z.string().max(60).optional().nullable(),
-  category: z.string().max(80).optional().nullable(),
+  categoryId: z.string().optional().nullable(),
   description: z.string().max(500).optional().nullable(),
   unit: z.string().min(1).max(20).default('pcs'),
   unitPrice: z.coerce.number().nonnegative(),
@@ -130,15 +139,21 @@ export type CreateMovementDto = z.infer<typeof createMovementSchema>;
 // ─── Sales ────────────────────────────────────────────────────────────────
 
 export const createSaleSchema = z.object({
-  subsidiaryId: z.string().optional().nullable(),
-  productId: z.string().optional().nullable(),
+  productId: z.string().min(1),
   quantity: z.coerce.number().int().positive(),
-  unitPrice: z.coerce.number().nonnegative(),
-  channel: saleChannelSchema.optional(),
-  customer: z.string().max(160).optional().nullable(),
+  unitPrice: z.coerce.number().nonnegative().optional(),
+  channel: saleChannelSchema.default('ONLINE'),
+  customer: z.string().max(120).optional().nullable(),
   soldAt: z.coerce.date().optional(),
+  subsidiaryId: z.string().optional().nullable(),
 });
 export type CreateSaleDto = z.infer<typeof createSaleSchema>;
+
+export const verifySalesDaySchema = z.object({
+  date: z.coerce.date(),
+  proofUrl: z.string().max(500).optional().nullable(),
+});
+export type VerifySalesDayDto = z.infer<typeof verifySalesDaySchema>;
 
 // ─── Farm batches ─────────────────────────────────────────────────────────
 
@@ -417,17 +432,27 @@ const financialRequestBaseSchema = z.object({
 
 export const createFinancialRequestSchema = financialRequestBaseSchema.superRefine((value, ctx) => {
   if (value.type === 'AIRTIME' || value.type === 'DATA_BUNDLE') {
-    if (!value.phoneNumber) ctx.addIssue({ code: 'custom', path: ['phoneNumber'], message: 'Phone number is required' });
-    if (!value.network) ctx.addIssue({ code: 'custom', path: ['network'], message: 'Network is required' });
+    if (!value.phoneNumber)
+      ctx.addIssue({ code: 'custom', path: ['phoneNumber'], message: 'Phone number is required' });
+    if (!value.network)
+      ctx.addIssue({ code: 'custom', path: ['network'], message: 'Network is required' });
   }
   if (value.type === 'DATA_BUNDLE' && !value.dataPlan) {
     ctx.addIssue({ code: 'custom', path: ['dataPlan'], message: 'Data plan is required' });
   }
   if (value.type === 'ELECTRICITY_BILL') {
-    if (!value.disco) ctx.addIssue({ code: 'custom', path: ['disco'], message: 'Disco is required' });
-    if (!value.customerId) ctx.addIssue({ code: 'custom', path: ['customerId'], message: 'Customer or meter number is required' });
-    if (!value.meterType) ctx.addIssue({ code: 'custom', path: ['meterType'], message: 'Meter type is required' });
-    if (!value.payerName) ctx.addIssue({ code: 'custom', path: ['payerName'], message: 'Payer name is required' });
+    if (!value.disco)
+      ctx.addIssue({ code: 'custom', path: ['disco'], message: 'Disco is required' });
+    if (!value.customerId)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['customerId'],
+        message: 'Customer or meter number is required',
+      });
+    if (!value.meterType)
+      ctx.addIssue({ code: 'custom', path: ['meterType'], message: 'Meter type is required' });
+    if (!value.payerName)
+      ctx.addIssue({ code: 'custom', path: ['payerName'], message: 'Payer name is required' });
   }
 });
 export type CreateFinancialRequestDto = z.infer<typeof createFinancialRequestSchema>;
@@ -464,7 +489,3 @@ export const updateNotificationSchema = z.object({
   isRead: z.boolean().optional(),
 });
 export type UpdateNotificationDto = z.infer<typeof updateNotificationSchema>;
-
-
-
-
