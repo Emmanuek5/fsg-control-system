@@ -25,11 +25,21 @@ async function bootstrap() {
   // Allow the configured web origin plus any local/LAN origin during dev, so the
   // app works whether opened via localhost, 127.0.0.1, or the machine's LAN IP.
   const localOrigin = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|(\d{1,3}\.){3}\d{1,3})(:\d+)?$/;
+  // WEB_ORIGIN may be a comma-separated list; compare ignoring trailing slashes and case.
+  const normalizeOrigin = (s: string) => s.trim().replace(/\/+$/, '').toLowerCase();
+  const allowedOrigins = (process.env.WEB_ORIGIN ?? '')
+    .split(',')
+    .map(normalizeOrigin)
+    .filter(Boolean);
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || origin === process.env.WEB_ORIGIN || localOrigin.test(origin)) {
+      if (!origin || allowedOrigins.includes(normalizeOrigin(origin)) || localOrigin.test(origin)) {
         return callback(null, true);
       }
+      Logger.warn(
+        `CORS rejected origin "${origin}" (WEB_ORIGIN allows: ${allowedOrigins.join(', ') || 'nothing'})`,
+        'Bootstrap',
+      );
       return callback(null, false);
     },
     credentials: true,

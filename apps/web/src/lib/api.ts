@@ -1,6 +1,8 @@
 import { clearToken, getToken, setToken } from './auth-storage';
 
-const BASE = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000') + '/api';
+// Tolerate a trailing slash in NEXT_PUBLIC_API_URL (e.g. Coolify's magic URLs)
+const ROOT = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/+$/, '');
+const BASE = ROOT + '/api';
 
 export class ApiError extends Error {
   constructor(
@@ -104,5 +106,5 @@ export const api = {
 export function fileUrl(path: string | null | undefined): string {
   if (!path) return '';
   if (path.startsWith('http')) return path;
-  return `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'}${path}`;
+  return `${ROOT}${path}`;
 }
