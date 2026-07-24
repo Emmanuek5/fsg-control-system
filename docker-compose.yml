@@ -1,8 +1,13 @@
 # Full stack: Postgres + Nest API + Next.js web
 #
 # Coolify / production: use this file as-is.
-# No host ports are published — services talk on the internal `fsg` network.
+# No host ports are published — services talk on the compose project network.
 # Coolify (or any reverse proxy) routes public domains to container ports.
+#
+# NOTE: deliberately NO custom `networks:` here. Coolify attaches every service
+# to its per-app network (the only one Traefik can reach); a second custom
+# network makes Traefik guess which container IP to dial and it randomly picks
+# the unreachable one → intermittent 504 Gateway Timeout after deploys.
 #
 # Local full stack (publish 3000 / 4000 / 5432 on the host):
 #   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
@@ -30,8 +35,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks:
-      - fsg
 
   api:
     build:
@@ -80,8 +83,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 120s
-    networks:
-      - fsg
 
   web:
     build:
@@ -114,13 +115,7 @@ services:
       timeout: 5s
       retries: 8
       start_period: 30s
-    networks:
-      - fsg
 
 volumes:
   fsg_pgdata:
   api_uploads:
-
-networks:
-  fsg:
-    driver: bridge
