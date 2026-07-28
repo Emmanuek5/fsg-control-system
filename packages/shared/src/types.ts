@@ -40,6 +40,25 @@ export interface SubsidiaryPerformancePoint {
   revenue: number;
 }
 
+/**
+ * Sales performance for one section (subsidiary) over a filtered period.
+ *
+ * `subsidiaryId` is null for the bucket holding sales recorded before anyone
+ * said where they came from — those exist and hiding them would make the
+ * shares add up to less than the total on screen.
+ */
+export interface SalesBySubsidiaryPoint {
+  subsidiaryId: string | null;
+  subsidiary: string;
+  type: string | null;
+  revenue: number;
+  subtotal: number;
+  logistics: number;
+  count: number;
+  /** Fraction of the period's total revenue, 0–1. */
+  share: number;
+}
+
 export interface EggProductionPoint {
   date: string;
   eggs: number;

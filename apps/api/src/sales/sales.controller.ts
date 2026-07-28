@@ -31,10 +31,25 @@ export class SalesController {
     return this.sales.list({ from, to, channel, productId, customerId, subsidiaryId, verified });
   }
 
+  /**
+   * Revenue split by section for the same filters as the list, so the shop and
+   * each farm can be compared over a chosen period.
+   */
+  @Get('by-subsidiary')
+  @RequirePermissions('sales:read')
+  bySubsidiary(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('channel') channel?: string,
+    @Query('verified') verified?: string,
+  ) {
+    return this.sales.bySubsidiary({ from, to, channel, verified });
+  }
+
   @Get('summary')
   @RequirePermissions('sales:read')
-  summary() {
-    return this.sales.summary();
+  summary(@Query('subsidiaryId') subsidiaryId?: string) {
+    return this.sales.summary(subsidiaryId);
   }
 
   @Get('day-summary')

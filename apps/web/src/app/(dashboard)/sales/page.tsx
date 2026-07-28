@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { SaleChannel } from '@fsg/shared';
+import { SaleChannel, type SalesBySubsidiaryPoint } from '@fsg/shared';
 import { api, ApiError, fileUrl } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { fmtDateTime, naira, num } from '@/lib/format';
@@ -38,8 +38,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { buildSellables, type ProductWithVariants } from '@/lib/sellables';
+import { SectionPerformance } from './section-performance';
 
 type ProductOpt = ProductWithVariants;
+
+interface SubsidiaryOpt {
+  id: string;
+  name: string;
+  type: string;
+}
 
 interface CustomerOpt {
   id: string;
@@ -142,10 +149,35 @@ export default function SalesPage() {
   const [to, setTo] = useState('');
   const [channel, setChannel] = useState('');
   const [verified, setVerified] = useState('');
+  const [subsidiaryId, setSubsidiaryId] = useState('');
   const qc = useQueryClient();
 
   const salesQ = useQuery({
-    queryKey: ['sales', from, to, channel, verified],
+    queryKey: ['sales', from, to, channel, verified, subsidiaryId],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      if (channel) params.set('channel', channel);
+      if (verified) params.set('verified', verified);
+      if (subsidiaryId) params.set('subsidiaryId', subsidiaryId);
+      const query = params.toString();
+      return api.get<Sale[]>(`/sales${query ? `?${query}` : ''}`);
+    },
+  });
+  const summaryQ = useQuery({
+    // Follows the section filter so the cards describe the same sales the
+    // table below is showing.
+    queryKey: ['sales-summary', subsidiaryId],
+    queryFn: () =>
+      api.get<SalesSummary>(
+        `/sales/summary${subsidiaryId ? `?subsidiaryId=${subsidiaryId}` : ''}`,
+      ),
+  });
+  // The breakdown spans every section regardless of the section filter — it is
+  // the comparison, so narrowing it to one row would defeat the point.
+  const breakdownQ = useQuery({
+    queryKey: ['sales-by-subsidiary', from, to, channel, verified],
     queryFn: () => {
       const params = new URLSearchParams();
       if (from) params.set('from', from);
@@ -153,12 +185,13 @@ export default function SalesPage() {
       if (channel) params.set('channel', channel);
       if (verified) params.set('verified', verified);
       const query = params.toString();
-      return api.get<Sale[]>(`/sales${query ? `?${query}` : ''}`);
+      return api.get<SalesBySubsidiaryPoint[]>(`/sales/by-subsidiary${query ? `?${query}` : ''}`);
     },
   });
-  const summaryQ = useQuery({
-    queryKey: ['sales-summary'],
-    queryFn: () => api.get<SalesSummary>('/sales/summary'),
+  const subsidiariesQ = useQuery({
+    queryKey: ['subsidiaries'],
+    queryFn: () => api.get<SubsidiaryOpt[]>('/subsidiaries'),
+    enabled: can('subsidiaries:read'),
   });
   const productsQ = useQuery({
     queryKey: ['products', 'sales'],
@@ -177,6 +210,7 @@ export default function SalesPage() {
       toast.success('Sale deleted and stock restored');
       await qc.invalidateQueries({ queryKey: ['sales'] });
       await qc.invalidateQueries({ queryKey: ['sales-summary'] });
+      await qc.invalidateQueries({ queryKey: ['sales-by-subsidiary'] });
       await qc.invalidateQueries({ queryKey: ['sales-day-summary'] });
       await qc.invalidateQueries({ queryKey: ['products'] });
       await qc.invalidateQueries({ queryKey: ['customers'] });
@@ -229,6 +263,15 @@ export default function SalesPage() {
     {
       header: 'Total',
       cell: (sale) => <span className="font-medium">{naira(sale.totalAmount)}</span>,
+    },
+    {
+      header: 'Section',
+      cell: (sale) =>
+        sale.subsidiary ? (
+          sale.subsidiary.name
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
     },
     {
       header: 'Channel',
@@ -294,6 +337,7 @@ export default function SalesPage() {
             { header: 'Subtotal', value: (sale) => sale.subtotal },
             { header: 'Logistics fee', value: (sale) => sale.logisticsFee },
             { header: 'Total', value: (sale) => sale.totalAmount },
+            { header: 'Section', value: (sale) => sale.subsidiary?.name },
             { header: 'Channel', value: (sale) => channelLabel[sale.channel] },
             { header: 'Recorded by', value: (sale) => sale.createdBy?.name },
             { header: 'Verified', value: (sale) => (sale.verifiedAt ? 'Yes' : 'No') },
@@ -304,6 +348,7 @@ export default function SalesPage() {
             products={productsQ.data ?? []}
             productsLoading={productsQ.isLoading}
             customers={customersQ.data ?? []}
+            subsidiaries={subsidiariesQ.data ?? []}
           />
         )}
       </PageHeader>
@@ -341,8 +386,18 @@ export default function SalesPage() {
 
       {can('sales:approve') && <EndOfDayCard />}
 
+      <SectionPerformance
+        rows={breakdownQ.data ?? []}
+        loading={breakdownQ.isLoading}
+        periodLabel={
+          from || to
+            ? `${from || 'start'} → ${to || 'today'}`
+            : 'All time'
+        }
+      />
+
       <Card className="mb-4 mt-6">
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
           <div className="space-y-1.5">
             <Label htmlFor="sales-from">From</Label>
             <Input
@@ -363,6 +418,22 @@ export default function SalesPage() {
               {Object.values(SaleChannel).map((value) => (
                 <option key={value} value={value}>
                   {channelLabel[value]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="sales-section">Section</Label>
+            <Select
+              id="sales-section"
+              value={subsidiaryId}
+              onChange={(e) => setSubsidiaryId(e.target.value)}
+              disabled={subsidiariesQ.isLoading}
+            >
+              <option value="">All sections</option>
+              {(subsidiariesQ.data ?? []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
                 </option>
               ))}
             </Select>
@@ -405,14 +476,20 @@ function SaleDialog({
   products,
   productsLoading,
   customers,
+  subsidiaries,
 }: {
   products: ProductOpt[];
   productsLoading: boolean;
   customers: CustomerOpt[];
+  subsidiaries: SubsidiaryOpt[];
 }) {
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState<LineForm[]>([{ ...emptyLine }]);
+  // Staff attached to one section record its sales far more often than any
+  // other, so start them there; head-office users start blank and choose.
+  const defaultSubsidiary = user?.subsidiaryId ?? '';
   const [form, setForm] = useState({
     customerId: '',
     customerName: '',
@@ -420,6 +497,7 @@ function SaleDialog({
     channel: SaleChannel.ONLINE as SaleChannel,
     note: '',
     soldAt: '',
+    subsidiaryId: defaultSubsidiary,
   });
 
   const resetForm = () => {
@@ -431,6 +509,7 @@ function SaleDialog({
       channel: SaleChannel.ONLINE,
       note: '',
       soldAt: '',
+      subsidiaryId: defaultSubsidiary,
     });
   };
 
@@ -471,11 +550,13 @@ function SaleDialog({
         customerName: form.customerId ? null : form.customerName.trim() || null,
         note: form.note.trim() || null,
         soldAt: form.soldAt || undefined,
+        subsidiaryId: form.subsidiaryId || null,
       }),
     onSuccess: async () => {
       toast.success('Sale recorded');
       await qc.invalidateQueries({ queryKey: ['sales'] });
       await qc.invalidateQueries({ queryKey: ['sales-summary'] });
+      await qc.invalidateQueries({ queryKey: ['sales-by-subsidiary'] });
       await qc.invalidateQueries({ queryKey: ['sales-day-summary'] });
       await qc.invalidateQueries({ queryKey: ['products'] });
       await qc.invalidateQueries({ queryKey: ['customers'] });
@@ -657,6 +738,24 @@ function SaleDialog({
                 </option>
               ))}
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Section</Label>
+            <Select
+              value={form.subsidiaryId}
+              onChange={(e) => setForm({ ...form, subsidiaryId: e.target.value })}
+            >
+              <option value="">Work it out from the products</option>
+              {subsidiaries.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Which part of the business earned this sale. Left blank, it falls back to the
+              customer&rsquo;s section and then the product&rsquo;s.
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label>Date</Label>

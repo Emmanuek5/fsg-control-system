@@ -1,5 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { CreateSaleDto, SaleChannel, VerifySalesDayDto } from '@fsg/shared';
+import type {
+  CreateSaleDto,
+  SaleChannel,
+  SalesBySubsidiaryPoint,
+  VerifySalesDayDto,
+} from '@fsg/shared';
 import { claimStock, effectiveUnitPrice, releaseStock, resolveStock } from '../inventory/stock';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -30,46 +35,99 @@ interface SalesFilters {
 export class SalesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Shared by the list and the per-section breakdown, so a filtered table and
+   * the performance figures above it can never disagree about which sales the
+   * user is looking at.
+   */
+  private where(filters: SalesFilters) {
+    return {
+      ...(filters.from || filters.to
+        ? {
+            soldAt: {
+              ...(filters.from ? { gte: this.filterDate(filters.from) } : {}),
+              ...(filters.to ? this.toFilter(filters.to) : {}),
+            },
+          }
+        : {}),
+      ...(filters.channel ? { channel: filters.channel as SaleChannel } : {}),
+      ...(filters.productId ? { items: { some: { productId: filters.productId } } } : {}),
+      ...(filters.customerId ? { customerId: filters.customerId } : {}),
+      ...(filters.subsidiaryId ? { subsidiaryId: filters.subsidiaryId } : {}),
+      ...(filters.verified === 'true'
+        ? { verifiedAt: { not: null } }
+        : filters.verified === 'false'
+          ? { verifiedAt: null }
+          : {}),
+    };
+  }
+
   list(filters: SalesFilters) {
     return this.prisma.sale.findMany({
-      where: {
-        ...(filters.from || filters.to
-          ? {
-              soldAt: {
-                ...(filters.from ? { gte: this.filterDate(filters.from) } : {}),
-                ...(filters.to ? this.toFilter(filters.to) : {}),
-              },
-            }
-          : {}),
-        ...(filters.channel ? { channel: filters.channel as SaleChannel } : {}),
-        ...(filters.productId ? { items: { some: { productId: filters.productId } } } : {}),
-        ...(filters.customerId ? { customerId: filters.customerId } : {}),
-        ...(filters.subsidiaryId ? { subsidiaryId: filters.subsidiaryId } : {}),
-        ...(filters.verified === 'true'
-          ? { verifiedAt: { not: null } }
-          : filters.verified === 'false'
-            ? { verifiedAt: null }
-            : {}),
-      },
+      where: this.where(filters),
       orderBy: { soldAt: 'desc' },
       take: 500,
       include,
     });
   }
 
-  async summary() {
+  /**
+   * Revenue per section for the filtered period — which part of the business
+   * the money came from, rather than one blended total.
+   *
+   * Deliberately ignores `filters.subsidiaryId`: narrowing to one section and
+   * then breaking down by section would always return a single row, which is
+   * useless as a comparison. The caller filters the table, not this.
+   */
+  async bySubsidiary(filters: SalesFilters): Promise<SalesBySubsidiaryPoint[]> {
+    const where = this.where({ ...filters, subsidiaryId: undefined });
+    const [grouped, subs] = await Promise.all([
+      this.prisma.sale.groupBy({
+        by: ['subsidiaryId'],
+        where,
+        _sum: { totalAmount: true, subtotal: true, logisticsFee: true },
+        _count: { _all: true },
+      }),
+      this.prisma.subsidiary.findMany({ select: { id: true, name: true, type: true } }),
+    ]);
+
+    const byId = new Map(subs.map((s) => [s.id, s]));
+    const total = grouped.reduce((sum, g) => sum + (g._sum.totalAmount ?? 0), 0);
+
+    return grouped
+      .map((g) => {
+        const sub = g.subsidiaryId ? byId.get(g.subsidiaryId) : null;
+        const revenue = g._sum.totalAmount ?? 0;
+        return {
+          subsidiaryId: g.subsidiaryId,
+          subsidiary: sub?.name ?? 'Unassigned',
+          type: sub?.type ?? null,
+          revenue,
+          subtotal: g._sum.subtotal ?? 0,
+          logistics: g._sum.logisticsFee ?? 0,
+          count: g._count._all,
+          share: total > 0 ? revenue / total : 0,
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue);
+  }
+
+  async summary(subsidiaryId?: string) {
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const todayWhere = { soldAt: { gte: startOfDay, lt: nextDay } };
+    // Scoping to a section keeps the KPI cards in step with the section the
+    // user has filtered the table to; omitted, it is the whole business.
+    const scope = subsidiaryId ? { subsidiaryId } : {};
+    const todayWhere = { ...scope, soldAt: { gte: startOfDay, lt: nextDay } };
 
     const [today, todayCount, month, unverifiedToday] = await Promise.all([
       this.prisma.sale.aggregate({ _sum: { totalAmount: true }, where: todayWhere }),
       this.prisma.sale.count({ where: todayWhere }),
       this.prisma.sale.aggregate({
         _sum: { totalAmount: true },
-        where: { soldAt: { gte: startOfMonth } },
+        where: { ...scope, soldAt: { gte: startOfMonth } },
       }),
       this.prisma.sale.count({ where: { ...todayWhere, verifiedAt: null } }),
     ]);
