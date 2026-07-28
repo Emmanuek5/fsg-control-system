@@ -33,6 +33,7 @@ interface StockRequest {
   createdAt: string;
   decidedAt: string | null;
   product: { id: string; name: string; sku: string | null; unit: string; quantityOnHand: number };
+  variant: { id: string; name: string; packSize: number; quantityOnHand: number } | null;
   subsidiary: { id: string; name: string } | null;
   requestedBy: { id: string; name: string; email: string } | null;
   approvedBy: { id: string; name: string; email: string } | null;
@@ -89,6 +90,7 @@ export default function StockRequestDetailPage() {
           <CardHeader><CardTitle className="flex items-center gap-2 text-base">Request details <Badge variant={statusVariant[request.status]}>{statusLabel[request.status]}</Badge></CardTitle></CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <Field label="Product" value={request.product.name} />
+            <Field label="Variant" value={request.variant?.name ?? '—'} />
             <Field label="Current stock" value={`${num(request.product.quantityOnHand)} ${request.product.unit}`} />
             <Field label="Movement" value={movementLabel[request.type]} />
             <Field label="Quantity" value={`${num(request.quantity)} ${request.product.unit}`} />

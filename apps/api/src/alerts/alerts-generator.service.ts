@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import type { AlertSeverity, AlertType } from '@fsg/shared';
+import { StockMode, type AlertSeverity, type AlertType } from '@fsg/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface Issue {
@@ -89,21 +89,53 @@ export class AlertsGeneratorService implements OnModuleInit {
     const issues: Issue[] = [];
     const money = (n: number) => `₦${Math.round(n).toLocaleString()}`;
 
-    // 1. Low stock
+    // 1. Low stock.
+    //
+    // POOLED products are judged on the shared pool, so one alert per product.
+    // PER_VARIANT products are judged per variant — a shop can be well stocked
+    // on 500ml Hypo and out of 1000ml, and only the variant alert says so.
     const products = await this.prisma.product.findMany({
-      select: { id: true, name: true, quantityOnHand: true, reorderLevel: true, subsidiaryId: true },
+      select: {
+        id: true,
+        name: true,
+        unit: true,
+        stockMode: true,
+        quantityOnHand: true,
+        reorderLevel: true,
+        subsidiaryId: true,
+        variants: {
+          select: { id: true, name: true, packSize: true, quantityOnHand: true, reorderLevel: true },
+        },
+      },
     });
     for (const p of products) {
-      if (p.reorderLevel > 0 && p.quantityOnHand <= p.reorderLevel) {
-        issues.push({
-          sourceKey: `low_stock:${p.id}`,
-          type: 'LOW_STOCK',
-          severity: p.quantityOnHand === 0 ? 'CRITICAL' : 'WARNING',
-          title: `Low stock: ${p.name}`,
-          message: `${p.quantityOnHand} in stock (reorder level is ${p.reorderLevel}).`,
-          subsidiaryId: p.subsidiaryId,
-          relatedEntity: 'product',
-        });
+      if (p.stockMode === StockMode.POOLED) {
+        if (p.reorderLevel > 0 && p.quantityOnHand <= p.reorderLevel) {
+          issues.push({
+            sourceKey: `low_stock:${p.id}`,
+            type: 'LOW_STOCK',
+            severity: p.quantityOnHand === 0 ? 'CRITICAL' : 'WARNING',
+            title: `Low stock: ${p.name}`,
+            message: `${p.quantityOnHand} ${p.unit} in stock (reorder level is ${p.reorderLevel}).`,
+            subsidiaryId: p.subsidiaryId,
+            relatedEntity: 'product',
+          });
+        }
+        continue;
+      }
+
+      for (const v of p.variants) {
+        if (v.reorderLevel > 0 && v.quantityOnHand <= v.reorderLevel) {
+          issues.push({
+            sourceKey: `low_stock:${p.id}:${v.id}`,
+            type: 'LOW_STOCK',
+            severity: v.quantityOnHand === 0 ? 'CRITICAL' : 'WARNING',
+            title: `Low stock: ${p.name} (${v.name})`,
+            message: `${v.quantityOnHand} in stock (reorder level is ${v.reorderLevel}).`,
+            subsidiaryId: p.subsidiaryId,
+            relatedEntity: 'product',
+          });
+        }
       }
     }
 

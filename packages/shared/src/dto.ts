@@ -21,6 +21,7 @@ import {
   saleChannelSchema,
   staffDepartmentSchema,
   staffStatusSchema,
+  stockModeSchema,
   subsidiaryTypeSchema,
 } from './enums';
 
@@ -104,29 +105,63 @@ export type CreateCategoryDto = z.infer<typeof createCategorySchema>;
 export const updateCategorySchema = createCategorySchema.partial();
 export type UpdateCategoryDto = z.infer<typeof updateCategorySchema>;
 
+// ─── Product variants ─────────────────────────────────────────────────────
+
+export const createProductVariantSchema = z.object({
+  name: z.string().min(1).max(80),
+  sku: z.string().max(60).optional().nullable(),
+  /**
+   * Base units consumed per unit sold — a 3 kg bag of a kg-based product is 3.
+   * Only meaningful on POOLED products; forced to 1 on PER_VARIANT ones.
+   */
+  packSize: z.coerce.number().positive().default(1),
+  unitPrice: z.coerce.number().nonnegative().default(0),
+  costPrice: z.coerce.number().nonnegative().default(0),
+  /** Ignored on POOLED products, where availability comes from the pool. */
+  quantityOnHand: z.coerce.number().int().nonnegative().default(0),
+  reorderLevel: z.coerce.number().int().nonnegative().default(0),
+  isDefault: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+});
+export type CreateProductVariantDto = z.infer<typeof createProductVariantSchema>;
+
+export const updateProductVariantSchema = createProductVariantSchema.partial();
+export type UpdateProductVariantDto = z.infer<typeof updateProductVariantSchema>;
+
 export const createProductSchema = z.object({
   subsidiaryId: z.string().optional().nullable(),
   name: z.string().min(1).max(160),
   sku: z.string().max(60).optional().nullable(),
   categoryId: z.string().optional().nullable(),
   description: z.string().max(500).optional().nullable(),
+  /** Base unit of measure. For POOLED products, the unit stock is counted in. */
   unit: z.string().min(1).max(20).default('pcs'),
+  stockMode: stockModeSchema.default('PER_VARIANT'),
   unitPrice: z.coerce.number().nonnegative(),
   costPrice: z.coerce.number().nonnegative(),
   quantityOnHand: z.coerce.number().int().nonnegative().default(0),
   reorderLevel: z.coerce.number().int().nonnegative().default(0),
   imageUrl: z.string().max(500).optional().nullable(),
+  /**
+   * Optional variants to create alongside the product. When omitted, a single
+   * "Default" variant is created carrying the product's price and stock, so
+   * every product is sellable immediately.
+   */
+  variants: z.array(createProductVariantSchema).optional(),
 });
 export type CreateProductDto = z.infer<typeof createProductSchema>;
 
-export const updateProductSchema = createProductSchema.partial();
+export const updateProductSchema = createProductSchema.partial().omit({ variants: true });
 export type UpdateProductDto = z.infer<typeof updateProductSchema>;
 
 // ─── Inventory movements ──────────────────────────────────────────────────
 
 export const createMovementSchema = z.object({
   productId: z.string().min(1),
+  /** Defaults to the product's default variant when omitted. */
+  variantId: z.string().optional().nullable(),
   type: movementTypeSchema,
+  /** Counted in variant units (2 = two 3 kg bags), not base units. */
   quantity: z.coerce.number().int().positive(),
   unitCost: z.coerce.number().nonnegative().optional().nullable(),
   reference: z.string().max(120).optional().nullable(),
@@ -138,12 +173,42 @@ export type CreateMovementDto = z.infer<typeof createMovementSchema>;
 
 // ─── Sales ────────────────────────────────────────────────────────────────
 
-export const createSaleSchema = z.object({
+export const saleItemSchema = z.object({
   productId: z.string().min(1),
+  /** Defaults to the product's default variant when omitted. */
+  variantId: z.string().optional().nullable(),
   quantity: z.coerce.number().int().positive(),
+  /** Defaults to the variant's current selling price when omitted. */
   unitPrice: z.coerce.number().nonnegative().optional(),
+});
+export type SaleItemDto = z.infer<typeof saleItemSchema>;
+
+export const createSaleSchema = z.object({
+  items: z
+    .array(saleItemSchema)
+    .min(1, 'Add at least one product')
+    .superRefine((items, ctx) => {
+      // Keyed on product *and* variant: two sizes of the same rice on one
+      // order are legitimate, the same size twice is a mistake.
+      const seen = new Set<string>();
+      for (const item of items) {
+        const key = `${item.productId}:${item.variantId ?? 'default'}`;
+        if (seen.has(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'The same product variant appears twice — merge the quantities instead',
+          });
+          return;
+        }
+        seen.add(key);
+      }
+    }),
+  logisticsFee: z.coerce.number().nonnegative().default(0),
   channel: saleChannelSchema.default('ONLINE'),
-  customer: z.string().max(120).optional().nullable(),
+  customerId: z.string().optional().nullable(),
+  /** Walk-in buyer name, used when no customer record is linked. */
+  customerName: z.string().max(120).optional().nullable(),
+  note: z.string().max(300).optional().nullable(),
   soldAt: z.coerce.date().optional(),
   subsidiaryId: z.string().optional().nullable(),
 });
@@ -154,6 +219,25 @@ export const verifySalesDaySchema = z.object({
   proofUrl: z.string().max(500).optional().nullable(),
 });
 export type VerifySalesDayDto = z.infer<typeof verifySalesDaySchema>;
+
+// ─── Customers ────────────────────────────────────────────────────────────
+
+export const createCustomerSchema = z.object({
+  name: z.string().min(1).max(160),
+  company: z.string().max(160).optional().nullable(),
+  phone: z.string().max(40).optional().nullable(),
+  email: z.string().email().max(160).optional().nullable(),
+  addressLine: z.string().max(300).optional().nullable(),
+  city: z.string().max(80).optional().nullable(),
+  state: z.string().max(80).optional().nullable(),
+  country: z.string().max(80).optional().nullable(),
+  notes: z.string().max(500).optional().nullable(),
+  subsidiaryId: z.string().optional().nullable(),
+});
+export type CreateCustomerDto = z.infer<typeof createCustomerSchema>;
+
+export const updateCustomerSchema = createCustomerSchema.partial();
+export type UpdateCustomerDto = z.infer<typeof updateCustomerSchema>;
 
 // ─── Farm batches ─────────────────────────────────────────────────────────
 
@@ -392,8 +476,11 @@ export type CreateRequestCommentDto = z.infer<typeof createRequestCommentSchema>
 
 export const createStockRequestSchema = z.object({
   productId: z.string().min(1),
+  /** Defaults to the product's default variant when omitted. */
+  variantId: z.string().optional().nullable(),
   subsidiaryId: z.string().optional().nullable(),
   type: movementTypeSchema,
+  /** Counted in variant units, matching the movement it will post. */
   quantity: z.coerce.number().int().positive(),
   unitCost: z.coerce.number().nonnegative().optional().nullable(),
   reference: z.string().max(120).optional().nullable(),

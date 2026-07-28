@@ -110,9 +110,43 @@ async function seedBusinessData() {
   ]);
 
   // ─── Products (online shop + farm produce) ──────────────────────────────
+  //
+  // Every product needs at least one variant to be sellable. These demo items
+  // are sold as single units, so each gets one "Default" variant mirroring the
+  // product's price and stock — the same shape the variants migration gives
+  // pre-existing rows.
+  const withDefaultVariant = <
+    T extends {
+      sku?: string | null;
+      unitPrice?: number;
+      costPrice?: number;
+      quantityOnHand?: number;
+      reorderLevel?: number;
+    },
+  >(
+    data: T,
+  ) => ({
+    ...data,
+    variants: {
+      create: [
+        {
+          name: 'Default',
+          sku: data.sku ?? null,
+          packSize: 1,
+          unitPrice: data.unitPrice ?? 0,
+          costPrice: data.costPrice ?? 0,
+          quantityOnHand: data.quantityOnHand ?? 0,
+          reorderLevel: data.reorderLevel ?? 0,
+          isDefault: true,
+        },
+      ],
+    },
+  });
+
   const products = await Promise.all([
     prisma.product.create({
-      data: {
+      include: { variants: true },
+      data: withDefaultVariant({
         subsidiaryId: shop.id,
         name: 'Crate of Eggs (30s)',
         sku: 'EGG-30',
@@ -122,10 +156,11 @@ async function seedBusinessData() {
         costPrice: 1800,
         quantityOnHand: 120,
         reorderLevel: 40,
-      },
+      }),
     }),
     prisma.product.create({
-      data: {
+      include: { variants: true },
+      data: withDefaultVariant({
         subsidiaryId: shop.id,
         name: 'Dressed Broiler (1.8kg)',
         sku: 'BRO-18',
@@ -135,10 +170,11 @@ async function seedBusinessData() {
         costPrice: 4200,
         quantityOnHand: 25,
         reorderLevel: 30, // below reorder -> low stock
-      },
+      }),
     }),
     prisma.product.create({
-      data: {
+      include: { variants: true },
+      data: withDefaultVariant({
         subsidiaryId: shop.id,
         name: 'Bag of Maize (50kg)',
         sku: 'MAZ-50',
@@ -148,10 +184,11 @@ async function seedBusinessData() {
         costPrice: 24000,
         quantityOnHand: 60,
         reorderLevel: 20,
-      },
+      }),
     }),
     prisma.product.create({
-      data: {
+      include: { variants: true },
+      data: withDefaultVariant({
         subsidiaryId: shop.id,
         name: 'Layer Feed (25kg)',
         sku: 'FEED-25',
@@ -161,7 +198,7 @@ async function seedBusinessData() {
         costPrice: 11000,
         quantityOnHand: 8,
         reorderLevel: 15, // below reorder -> low stock
-      },
+      }),
     }),
   ]);
 
@@ -170,6 +207,7 @@ async function seedBusinessData() {
     data: [
       {
         productId: products[0].id,
+        variantId: products[0].variants[0].id,
         type: 'IN',
         quantity: 150,
         unitCost: 1800,
@@ -178,6 +216,7 @@ async function seedBusinessData() {
       },
       {
         productId: products[0].id,
+        variantId: products[0].variants[0].id,
         type: 'OUT',
         quantity: 30,
         reference: 'Online orders',
@@ -185,6 +224,7 @@ async function seedBusinessData() {
       },
       {
         productId: products[2].id,
+        variantId: products[2].variants[0].id,
         type: 'IN',
         quantity: 80,
         unitCost: 24000,
@@ -194,72 +234,131 @@ async function seedBusinessData() {
     ],
   });
 
-  // ─── Sales (today + this month) ─────────────────────────────────────────
-  await prisma.sale.createMany({
-    data: [
-      {
+  // ─── Customers ──────────────────────────────────────────────────────────
+  const [mrsAde, graceStores, hotel] = await Promise.all([
+    prisma.customer.create({
+      data: {
+        name: 'Mrs. Ade',
+        phone: '08031234567',
+        email: 'mrs.ade@example.com',
+        addressLine: '14 Allen Avenue',
+        city: 'Ikeja',
+        state: 'Lagos',
+        country: 'Nigeria',
         subsidiaryId: shop.id,
-        productId: products[0].id,
-        quantity: 10,
-        unitPrice: 2800,
-        totalAmount: 28000,
-        channel: 'ONLINE',
-        customer: 'Walk-in',
-        soldAt: new Date(),
         createdById: staff.id,
       },
-      {
+    }),
+    prisma.customer.create({
+      data: {
+        name: 'Grace Stores',
+        company: 'Grace Stores Ltd',
+        phone: '08099887766',
+        addressLine: '2 Market Road',
+        city: 'Ibadan',
+        state: 'Oyo',
+        country: 'Nigeria',
         subsidiaryId: shop.id,
-        productId: products[1].id,
-        quantity: 5,
-        unitPrice: 6500,
-        totalAmount: 32500,
-        channel: 'ONLINE',
-        customer: 'Mrs. Ade',
-        soldAt: new Date(),
-        createdById: staff.id,
-      },
-      {
-        subsidiaryId: shop.id,
-        productId: products[2].id,
-        quantity: 3,
-        unitPrice: 32000,
-        totalAmount: 96000,
-        channel: 'WHOLESALE',
-        customer: 'Grace Stores',
-        soldAt: daysAgo(2),
         createdById: manager.id,
-        verifiedAt: daysAgo(1),
-        verifiedById: admin.id,
       },
-      {
-        subsidiaryId: layers.id,
-        productId: products[0].id,
-        quantity: 40,
-        unitPrice: 2800,
-        totalAmount: 112000,
-        channel: 'WHOLESALE',
-        customer: 'Market vendor',
-        soldAt: daysAgo(6),
-        createdById: manager.id,
-        verifiedAt: daysAgo(5),
-        verifiedById: admin.id,
-      },
-      {
+    }),
+    prisma.customer.create({
+      data: {
+        name: 'Sunrise Hotel',
+        company: 'Sunrise Hospitality',
+        phone: '07011122233',
+        addressLine: '9 Lekki Phase 1',
+        city: 'Lagos',
+        state: 'Lagos',
+        country: 'Nigeria',
         subsidiaryId: broilers.id,
-        productId: products[1].id,
-        quantity: 20,
-        unitPrice: 6500,
-        totalAmount: 130000,
-        channel: 'IN_STORE',
-        customer: 'Hotel order',
-        soldAt: daysAgo(9),
         createdById: manager.id,
-        verifiedAt: daysAgo(8),
-        verifiedById: admin.id,
       },
-    ],
+    }),
+  ]);
+
+  // ─── Sales (today + this month) ─────────────────────────────────────────
+  // Each sale is an order header: one or more product lines plus a logistics fee.
+  const line = (product: (typeof products)[number], quantity: number, unitPrice: number) => ({
+    productId: product.id,
+    variantId: product.variants[0].id,
+    productName: product.name,
+    variantName: product.variants[0].name,
+    unit: product.unit,
+    quantity,
+    unitPrice,
+    lineTotal: quantity * unitPrice,
   });
+
+  const seedSales = [
+    {
+      subsidiaryId: shop.id,
+      customerName: 'Walk-in',
+      channel: 'ONLINE' as const,
+      logisticsFee: 0,
+      soldAt: new Date(),
+      createdById: staff.id,
+      lines: [line(products[0], 10, 2800)],
+    },
+    {
+      subsidiaryId: shop.id,
+      customerId: mrsAde.id,
+      customerName: mrsAde.name,
+      channel: 'ONLINE' as const,
+      logisticsFee: 3500,
+      soldAt: new Date(),
+      createdById: staff.id,
+      lines: [line(products[1], 5, 6500), line(products[0], 4, 2800)],
+    },
+    {
+      subsidiaryId: shop.id,
+      customerId: graceStores.id,
+      customerName: graceStores.name,
+      channel: 'WHOLESALE' as const,
+      logisticsFee: 12000,
+      soldAt: daysAgo(2),
+      createdById: manager.id,
+      verifiedAt: daysAgo(1),
+      verifiedById: admin.id,
+      lines: [line(products[2], 3, 32000), line(products[3], 2, 14500)],
+    },
+    {
+      subsidiaryId: layers.id,
+      customerName: 'Market vendor',
+      channel: 'WHOLESALE' as const,
+      logisticsFee: 0,
+      soldAt: daysAgo(6),
+      createdById: manager.id,
+      verifiedAt: daysAgo(5),
+      verifiedById: admin.id,
+      lines: [line(products[0], 40, 2800)],
+    },
+    {
+      subsidiaryId: broilers.id,
+      customerId: hotel.id,
+      customerName: hotel.name,
+      channel: 'IN_STORE' as const,
+      logisticsFee: 7500,
+      soldAt: daysAgo(9),
+      createdById: manager.id,
+      verifiedAt: daysAgo(8),
+      verifiedById: admin.id,
+      lines: [line(products[1], 20, 6500)],
+    },
+  ];
+
+  for (const { lines, logisticsFee, ...sale } of seedSales) {
+    const subtotal = lines.reduce((sum, item) => sum + item.lineTotal, 0);
+    await prisma.sale.create({
+      data: {
+        ...sale,
+        subtotal,
+        logisticsFee,
+        totalAmount: subtotal + logisticsFee,
+        items: { create: lines },
+      },
+    });
+  }
 
   // ─── Farm batches + records ─────────────────────────────────────────────
   const layerBatch = await prisma.farmBatch.create({

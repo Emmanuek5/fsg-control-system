@@ -1,9 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { CreateSaleDto, SaleChannel, VerifySalesDayDto } from '@fsg/shared';
+import { claimStock, effectiveUnitPrice, releaseStock, resolveStock } from '../inventory/stock';
 import { PrismaService } from '../prisma/prisma.service';
 
 const include = {
-  product: { select: { id: true, name: true, unit: true } },
+  items: {
+    include: {
+      product: { select: { id: true, name: true, unit: true } },
+      variant: { select: { id: true, name: true, packSize: true } },
+    },
+  },
+  customer: { select: { id: true, name: true, phone: true, city: true } },
   subsidiary: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
   verifiedBy: { select: { id: true, name: true } },
@@ -14,6 +21,7 @@ interface SalesFilters {
   to?: string;
   channel?: string;
   productId?: string;
+  customerId?: string;
   subsidiaryId?: string;
   verified?: string;
 }
@@ -34,7 +42,8 @@ export class SalesService {
             }
           : {}),
         ...(filters.channel ? { channel: filters.channel as SaleChannel } : {}),
-        ...(filters.productId ? { productId: filters.productId } : {}),
+        ...(filters.productId ? { items: { some: { productId: filters.productId } } } : {}),
+        ...(filters.customerId ? { customerId: filters.customerId } : {}),
         ...(filters.subsidiaryId ? { subsidiaryId: filters.subsidiaryId } : {}),
         ...(filters.verified === 'true'
           ? { verifiedAt: { not: null } }
@@ -79,7 +88,7 @@ export class SalesService {
     const [summary, verifiedCount, latestVerification] = await Promise.all([
       this.prisma.sale.aggregate({
         _count: { _all: true },
-        _sum: { totalAmount: true },
+        _sum: { totalAmount: true, logisticsFee: true },
         where,
       }),
       this.prisma.sale.count({ where: { ...where, verifiedAt: { not: null } } }),
@@ -99,6 +108,7 @@ export class SalesService {
       date: key,
       count,
       totalAmount: summary._sum.totalAmount ?? 0,
+      logisticsTotal: summary._sum.logisticsFee ?? 0,
       verifiedCount,
       unverifiedCount: count - verifiedCount,
       proofUrl: latestVerification?.proofUrl ?? null,
@@ -109,53 +119,81 @@ export class SalesService {
 
   async create(dto: CreateSaleDto, userId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const product = await tx.product.findUnique({ where: { id: dto.productId } });
-      if (!product) throw new NotFoundException('Product not found');
-      if (product.quantityOnHand < dto.quantity) {
-        throw new BadRequestException(
-          `Insufficient stock. Only ${product.quantityOnHand} ${product.unit} available`,
-        );
-      }
+      const customer = dto.customerId
+        ? await tx.customer.findUnique({ where: { id: dto.customerId } })
+        : null;
+      if (dto.customerId && !customer) throw new NotFoundException('Customer not found');
 
       const soldAt = dto.soldAt ?? new Date();
-      const unitPrice = dto.unitPrice ?? product.unitPrice;
-      const stockClaim = await tx.product.updateMany({
-        where: {
-          id: product.id,
-          quantityOnHand: { gte: dto.quantity },
-        },
-        data: { quantityOnHand: { decrement: dto.quantity } },
-      });
-      if (stockClaim.count === 0) {
-        const current = await tx.product.findUnique({ where: { id: product.id } });
-        throw new BadRequestException(
-          `Insufficient stock. Only ${current?.quantityOnHand ?? 0} ${product.unit} available`,
-        );
+      const buyer = customer?.name ?? dto.customerName?.trim() ?? null;
+      const lines: {
+        productId: string;
+        variantId: string;
+        productName: string;
+        variantName: string;
+        unit: string;
+        quantity: number;
+        unitPrice: number;
+        lineTotal: number;
+        inventoryMovementId: string;
+      }[] = [];
+      let firstSubsidiaryId: string | null = null;
+
+      for (const item of dto.items) {
+        // Resolving here (rather than batching up front) keeps the read inside
+        // the transaction and next to the claim it guards.
+        const resolved = await resolveStock(tx, item.productId, item.variantId);
+        const { product, variant } = resolved;
+        firstSubsidiaryId ??= product.subsidiaryId;
+
+        // Conditional decrement — the row is only claimed if the stock is still
+        // there, so two concurrent sales can never oversell the same product.
+        // For POOLED products this draws quantity × packSize from the pool.
+        await claimStock(tx, resolved, item.quantity);
+
+        const movement = await tx.inventoryMovement.create({
+          data: {
+            productId: product.id,
+            variantId: variant.id,
+            type: 'OUT',
+            quantity: item.quantity,
+            reference: 'SALE',
+            note: `Sale${buyer ? ` to ${buyer}` : ''}`,
+            occurredAt: soldAt,
+            createdById: userId,
+          },
+        });
+
+        const unitPrice = item.unitPrice ?? effectiveUnitPrice(resolved);
+        lines.push({
+          productId: product.id,
+          variantId: variant.id,
+          productName: product.name,
+          variantName: variant.name,
+          unit: product.unit,
+          quantity: item.quantity,
+          unitPrice,
+          lineTotal: item.quantity * unitPrice,
+          inventoryMovementId: movement.id,
+        });
       }
 
-      const movement = await tx.inventoryMovement.create({
-        data: {
-          productId: product.id,
-          type: 'OUT',
-          quantity: dto.quantity,
-          reference: 'SALE',
-          note: `Sale${dto.customer ? ` to ${dto.customer}` : ''}`,
-          occurredAt: soldAt,
-          createdById: userId,
-        },
-      });
+      const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+      const logisticsFee = dto.logisticsFee ?? 0;
+
       return tx.sale.create({
         data: {
-          subsidiaryId: dto.subsidiaryId ?? product.subsidiaryId,
-          productId: product.id,
-          quantity: dto.quantity,
-          unitPrice,
-          totalAmount: dto.quantity * unitPrice,
+          subsidiaryId: dto.subsidiaryId ?? customer?.subsidiaryId ?? firstSubsidiaryId,
+          customerId: customer?.id ?? null,
+          customerName: buyer,
+          subtotal,
+          logisticsFee,
+          totalAmount: subtotal + logisticsFee,
           channel: dto.channel,
-          customer: dto.customer ?? null,
+          note: dto.note ?? null,
           soldAt,
           createdById: userId,
-          inventoryMovementId: movement.id,
+          items: { create: lines },
         },
         include,
       });
@@ -179,29 +217,37 @@ export class SalesService {
     const sale = await this.prisma.sale.findUnique({
       where: { id },
       select: {
-        productId: true,
-        quantity: true,
         verifiedAt: true,
-        inventoryMovementId: true,
+        items: {
+          select: {
+            productId: true,
+            variantId: true,
+            quantity: true,
+            inventoryMovementId: true,
+          },
+        },
       },
     });
     if (!sale) throw new NotFoundException('Sale not found');
     if (sale.verifiedAt) throw new BadRequestException('Verified sales cannot be deleted');
 
     await this.prisma.$transaction(async (tx) => {
+      // Deleting the sale cascades to its items, which frees their movements.
       const deleted = await tx.sale.deleteMany({ where: { id, verifiedAt: null } });
       if (deleted.count === 0) {
         throw new BadRequestException('Verified sales cannot be deleted');
       }
 
-      if (sale.productId) {
-        await tx.product.update({
-          where: { id: sale.productId },
-          data: { quantityOnHand: { increment: sale.quantity } },
-        });
-      }
-      if (sale.inventoryMovementId) {
-        await tx.inventoryMovement.delete({ where: { id: sale.inventoryMovementId } });
+      for (const item of sale.items) {
+        // productId is null only when the product was deleted outright, in
+        // which case there is no stock left to give back.
+        if (item.productId) {
+          const resolved = await resolveStock(tx, item.productId, item.variantId);
+          await releaseStock(tx, resolved, item.quantity);
+        }
+        if (item.inventoryMovementId) {
+          await tx.inventoryMovement.delete({ where: { id: item.inventoryMovementId } });
+        }
       }
     });
     return { ok: true };

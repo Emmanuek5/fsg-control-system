@@ -2,9 +2,13 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   createProductSchema,
+  createProductVariantSchema,
   updateProductSchema,
+  updateProductVariantSchema,
   type CreateProductDto,
+  type CreateProductVariantDto,
   type UpdateProductDto,
+  type UpdateProductVariantDto,
 } from '@fsg/shared';
 import { CurrentUser, type RequestUser } from '../common/current-user.decorator';
 import { RequirePermissions } from '../common/require-permissions.decorator';
@@ -48,5 +52,34 @@ export class ProductsController {
   @RequirePermissions('products:delete')
   remove(@Param('id') id: string) {
     return this.products.remove(id);
+  }
+
+  // ─── Variants ─────────────────────────────────────────────────────────────
+  // Nested under the product: a variant has no meaning on its own, and the
+  // parent is what carries the stock mode that governs it.
+
+  @Post(':id/variants')
+  @RequirePermissions('products:create')
+  addVariant(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(createProductVariantSchema)) dto: CreateProductVariantDto,
+  ) {
+    return this.products.addVariant(id, dto);
+  }
+
+  @Patch(':id/variants/:variantId')
+  @RequirePermissions('products:update')
+  updateVariant(
+    @Param('id') id: string,
+    @Param('variantId') variantId: string,
+    @Body(new ZodValidationPipe(updateProductVariantSchema)) dto: UpdateProductVariantDto,
+  ) {
+    return this.products.updateVariant(id, variantId, dto);
+  }
+
+  @Delete(':id/variants/:variantId')
+  @RequirePermissions('products:delete')
+  removeVariant(@Param('id') id: string, @Param('variantId') variantId: string) {
+    return this.products.removeVariant(id, variantId);
   }
 }

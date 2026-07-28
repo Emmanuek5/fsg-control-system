@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  DashboardKpis,
-  EggProductionPoint,
-  RecentActivityItem,
-  SubsidiaryPerformancePoint,
+import {
+  StockMode,
+  type DashboardKpis,
+  type EggProductionPoint,
+  type RecentActivityItem,
+  type SubsidiaryPerformancePoint,
 } from '@fsg/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionsService } from '../auth/permissions.service';
@@ -43,7 +44,14 @@ export class DashboardService {
       investmentsNearingMaturity,
       activeAlerts,
     ] = await Promise.all([
-      this.prisma.product.findMany({ select: { quantityOnHand: true, costPrice: true } }),
+      this.prisma.product.findMany({
+        select: {
+          stockMode: true,
+          quantityOnHand: true,
+          costPrice: true,
+          variants: { select: { quantityOnHand: true, costPrice: true } },
+        },
+      }),
       this.prisma.sale.aggregate({
         _sum: { totalAmount: true },
         where: { soldAt: { gte: startOfDay } },
@@ -72,7 +80,16 @@ export class DashboardService {
       this.prisma.alert.count({ where: { isResolved: false } }),
     ]);
 
-    const totalStockValue = products.reduce((sum, p) => sum + p.quantityOnHand * p.costPrice, 0);
+    // POOLED products are valued off the pool at the product's cost; for
+    // PER_VARIANT ones each variant is valued at its own cost, since pack
+    // sizes rarely cost the same per unit.
+    const totalStockValue = products.reduce((sum, p) => {
+      if (p.stockMode === StockMode.POOLED) return sum + p.quantityOnHand * p.costPrice;
+      return (
+        sum +
+        p.variants.reduce((sub, v) => sub + v.quantityOnHand * (v.costPrice || p.costPrice), 0)
+      );
+    }, 0);
     const birdsAlive = activeBatches.reduce(
       (sum, b) => sum + b.initialCount - b.mortalityRecords.reduce((m, r) => m + r.count, 0),
       0,
@@ -130,7 +147,7 @@ export class DashboardService {
         take: 6,
         orderBy: { soldAt: 'desc' },
         include: {
-          product: { select: { name: true } },
+          items: { select: { productName: true, quantity: true } },
           createdBy: { select: { name: true } },
         },
       }),
@@ -148,7 +165,7 @@ export class DashboardService {
       ...sales.map((s) => ({
         id: `sale-${s.id}`,
         kind: 'sale',
-        description: `Sold ${s.quantity} × ${s.product?.name ?? 'item'}`,
+        description: this.describeSale(s.items),
         amount: seesFinance ? s.totalAmount : null,
         occurredAt: s.soldAt.toISOString(),
         actor: s.createdBy?.name ?? null,
@@ -164,6 +181,13 @@ export class DashboardService {
     ];
 
     return items.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0, 8);
+  }
+
+  private describeSale(items: { productName: string; quantity: number }[]) {
+    const [first, ...rest] = items;
+    if (!first) return 'Recorded a sale';
+    const line = `Sold ${first.quantity} × ${first.productName}`;
+    return rest.length ? `${line} +${rest.length} more` : line;
   }
 
   async urgentAlerts(user: RequestUser) {

@@ -6,6 +6,7 @@ import {
   Bird,
   ClipboardCheck,
   ClipboardList,
+  Contact,
   Boxes,
   Egg,
   HandCoins,
@@ -62,6 +63,7 @@ export const NAV_SECTIONS: NavSection[] = [
         permission: ['products:read'],
       },
       { label: 'Sales', href: '/sales', icon: HandCoins, permission: ['sales:read'] },
+      { label: 'Customers', href: '/customers', icon: Contact, permission: ['customers:read'] },
       {
         label: 'Stock Movements',
         href: '/stock-movements',

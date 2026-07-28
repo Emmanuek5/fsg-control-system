@@ -75,6 +75,12 @@ export const PERMISSION_RESOURCES: PermissionResource[] = [
     actions: ['read', 'create', 'update', 'delete', 'approve'],
   },
   {
+    key: 'customers',
+    label: 'Customers',
+    description: 'Customer records, contact details and delivery addresses',
+    actions: CRUD,
+  },
+  {
     key: 'expenses',
     label: 'Expenses',
     description: 'Operational expenses across zones (feed, fuel, utilities, ...)',
@@ -243,6 +249,7 @@ const managerPermissions: string[] = [
   'sales:update',
   'sales:delete',
   // End-of-day verification defaults to Admin only.
+  ...permissionsFor('customers'),
   ...permissionsFor('expenses'),
   ...permissionsFor('farm'),
   ...permissionsFor('crops'),
@@ -273,6 +280,9 @@ const staffPermissions: string[] = [
   'inventory:create',
   'sales:read',
   'sales:create',
+  'customers:read',
+  'customers:create',
+  'customers:update',
   'expenses:read',
   'expenses:create',
   'farm:read',

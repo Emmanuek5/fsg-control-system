@@ -34,6 +34,21 @@ enum MovementType {
   ADJUSTMENT
 }
 
+/// How a product's stock is tracked across its variants.
+///
+/// PER_VARIANT — each variant is its own inventory line with its own count.
+/// Right for sealed goods bought and sold as distinct units: Hypo 500ml and
+/// Hypo 1000ml are separate bottles on the shelf and cannot substitute.
+///
+/// POOLED — the product holds one pool of stock measured in its base `unit`,
+/// and every variant draws `packSize` base units from it. Right for goods
+/// bought in bulk and repackaged: 53 kg of Big Bull Rice can be sold loose by
+/// the kilo or as a 3 kg bag, and either way the same pool goes down.
+enum StockMode {
+  PER_VARIANT
+  POOLED
+}
+
 enum SaleChannel {
   ONLINE
   IN_STORE
@@ -267,6 +282,7 @@ model User {
   movements                  InventoryMovement[]
   sales                      Sale[]
   salesVerified              Sale[]              @relation("SaleVerifier")
+  customers                  Customer[]
   expenses                   Expense[]
   auditLogs                  AuditLog[]
   staffProfile               Staff?
@@ -295,6 +311,7 @@ model Subsidiary {
   users             User[]
   products          Product[]
   sales             Sale[]
+  customers         Customer[]
   farmBatches       FarmBatch[]
   crops             Crop[]
   livestock         Livestock[]
@@ -327,28 +344,77 @@ model Product {
   categoryId     String?
   category       Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   description    String?
-  /// Unit of measure for stock & pricing, e.g. "pcs", "kg", "crate", "bag".
+  /// Base unit of measure, e.g. "pcs", "kg", "crate", "bag". For a POOLED
+  /// product this is the unit `quantityOnHand` is counted in and the unit each
+  /// variant's `packSize` multiplies.
   unit           String      @default("pcs")
+  stockMode      StockMode   @default(PER_VARIANT)
+  /// Default selling/cost price, inherited by new variants. Variants may
+  /// override both; the variant's price is what a sale actually charges.
   unitPrice      Float       @default(0)
   costPrice      Float       @default(0)
+  /// Authoritative only when stockMode = POOLED. For PER_VARIANT products this
+  /// is a rolled-up sum of variant stock, rewritten whenever a variant moves,
+  /// so dashboards and list views can read one number without joining.
   quantityOnHand Int         @default(0)
   reorderLevel   Int         @default(0)
   imageUrl       String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
+  variants      ProductVariant[]
   movements     InventoryMovement[]
-  sales         Sale[]
+  saleItems     SaleItem[]
   stockRequests StockRequest[]
 
   @@map("products")
 }
 
+/// A sellable form of a product — a pack size, a bottle size, a loose measure.
+/// Every product has at least one, so sales always reference a variant.
+model ProductVariant {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// Label shown to staff, e.g. "Loose (kg)", "3 kg bag", "500ml".
+  name      String
+  sku       String? @unique
+  /// Base units consumed per unit sold. Only meaningful when the parent is
+  /// POOLED — a 3 kg bag of a kg-based product has packSize 3. Always 1 for
+  /// PER_VARIANT products, where the variant counts its own whole units.
+  packSize  Float   @default(1)
+  unitPrice Float   @default(0)
+  costPrice Float   @default(0)
+  /// Authoritative only when the parent is PER_VARIANT. For POOLED products
+  /// availability is derived from the product pool and ignores this column.
+  quantityOnHand Int      @default(0)
+  reorderLevel   Int      @default(0)
+  /// The variant pre-selected in pickers, and the one legacy rows were
+  /// migrated onto. Exactly one per product.
+  isDefault      Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  movements     InventoryMovement[]
+  saleItems     SaleItem[]
+  stockRequests StockRequest[]
+
+  @@unique([productId, name])
+  @@index([productId])
+  @@map("product_variants")
+}
+
 model InventoryMovement {
-  id           String        @id @default(cuid())
+  id           String          @id @default(cuid())
   productId    String
-  product      Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product      Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// Which variant moved. Null only on rows predating variants that could not
+  /// be matched to one; everything written since resolves a variant first.
+  variantId    String?
+  variant      ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
   type         MovementType
+  /// Counted in variant units (e.g. 2 = two 3 kg bags), not base units.
   quantity     Int
   unitCost     Float?
   reference    String?
@@ -359,36 +425,94 @@ model InventoryMovement {
   createdBy    User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt    DateTime      @default(now())
   stockRequest StockRequest?
-  sale         Sale?
+  saleItem     SaleItem?
 
   @@index([productId])
+  @@index([variantId])
   @@map("inventory_movements")
 }
 
+/// A sale is an order header: one customer, many product lines, plus a
+/// logistics (delivery) fee charged on top of the line totals.
 model Sale {
+  id           String      @id @default(cuid())
+  subsidiaryId String?
+  subsidiary   Subsidiary? @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  customerId   String?
+  customer     Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  /// Buyer name for walk-in sales with no customer record; also snapshots the
+  /// customer's name at the time of sale.
+  customerName String?
+  /// Sum of the line totals, before logistics.
+  subtotal     Float       @default(0)
+  logisticsFee Float       @default(0)
+  /// subtotal + logisticsFee
+  totalAmount  Float
+  channel      SaleChannel @default(ONLINE)
+  note         String?
+  soldAt       DateTime    @default(now())
+  createdById  String?
+  createdBy    User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime    @default(now())
+  verifiedById String?
+  verifiedBy   User?       @relation("SaleVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  verifiedAt   DateTime?
+  proofUrl     String?
+
+  items SaleItem[]
+
+  @@index([soldAt])
+  @@index([customerId])
+  @@map("sales")
+}
+
+model SaleItem {
   id                  String             @id @default(cuid())
-  subsidiaryId        String?
-  subsidiary          Subsidiary?        @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  saleId              String
+  sale                Sale               @relation(fields: [saleId], references: [id], onDelete: Cascade)
   productId           String?
   product             Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId           String?
+  variant             ProductVariant?    @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  /// Name, variant label and unit captured at sale time so the line survives
+  /// product edits — and still reads correctly if the variant is later removed.
+  productName         String
+  variantName         String?
+  unit                String             @default("pcs")
   quantity            Int
   unitPrice           Float
-  totalAmount         Float
-  channel             SaleChannel        @default(ONLINE)
-  customer            String?
-  soldAt              DateTime           @default(now())
-  createdById         String?
-  createdBy           User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt           DateTime           @default(now())
-  verifiedById        String?
-  verifiedBy          User?              @relation("SaleVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
-  verifiedAt          DateTime?
-  proofUrl            String?
+  lineTotal           Float
   inventoryMovementId String?            @unique
   inventoryMovement   InventoryMovement? @relation(fields: [inventoryMovementId], references: [id], onDelete: SetNull)
 
-  @@index([soldAt])
-  @@map("sales")
+  @@index([saleId])
+  @@index([productId])
+  @@index([variantId])
+  @@map("sale_items")
+}
+
+model Customer {
+  id           String      @id @default(cuid())
+  name         String
+  company      String?
+  phone        String?
+  email        String?
+  addressLine  String?
+  city         String?
+  state        String?
+  country      String?
+  notes        String?
+  subsidiaryId String?
+  subsidiary   Subsidiary? @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
+  createdById  String?
+  createdBy    User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  sales Sale[]
+
+  @@index([name])
+  @@map("customers")
 }
 
 model FarmBatch {
@@ -705,6 +829,8 @@ model StockRequest {
   id                  String             @id @default(cuid())
   productId           String
   product             Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId           String?
+  variant             ProductVariant?    @relation(fields: [variantId], references: [id], onDelete: SetNull)
   subsidiaryId        String?
   subsidiary          Subsidiary?        @relation(fields: [subsidiaryId], references: [id], onDelete: SetNull)
   type                MovementType
@@ -728,6 +854,7 @@ model StockRequest {
   @@index([status])
   @@index([requestedById])
   @@index([productId])
+  @@index([variantId])
   @@map("stock_requests")
 }
 

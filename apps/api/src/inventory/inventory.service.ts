@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { MovementType, type CreateMovementDto } from '@fsg/shared';
+import { type CreateMovementDto } from '@fsg/shared';
 import { PermissionsService } from '../auth/permissions.service';
 import type { RequestUser } from '../common/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { applyMovement, resolveStock } from './stock';
 
 @Injectable()
 export class InventoryService {
@@ -11,14 +12,18 @@ export class InventoryService {
     private readonly permissions: PermissionsService,
   ) {}
 
-  async list(user: RequestUser, productId?: string) {
+  async list(user: RequestUser, productId?: string, variantId?: string) {
     const [movements, seesFinance] = await Promise.all([
       this.prisma.inventoryMovement.findMany({
-        where: productId ? { productId } : undefined,
+        where: {
+          ...(productId ? { productId } : {}),
+          ...(variantId ? { variantId } : {}),
+        },
         orderBy: { occurredAt: 'desc' },
         take: 200,
         include: {
           product: { select: { id: true, name: true, sku: true, unit: true } },
+          variant: { select: { id: true, name: true, packSize: true } },
           createdBy: { select: { id: true, name: true } },
         },
       }),
@@ -30,19 +35,19 @@ export class InventoryService {
     }));
   }
 
-  /** Records a movement and adjusts the product's stock on hand atomically. */
+  /**
+   * Records a movement and adjusts stock atomically. The quantity is in
+   * variant units; on a POOLED product the engine converts it to base units
+   * before touching the pool.
+   */
   async create(dto: CreateMovementDto, userId: string | null) {
     return this.prisma.$transaction(async (tx) => {
-      const product = await tx.product.findUniqueOrThrow({ where: { id: dto.productId } });
-
-      let newQty = product.quantityOnHand;
-      if (dto.type === MovementType.IN) newQty += dto.quantity;
-      else if (dto.type === MovementType.OUT) newQty = Math.max(0, newQty - dto.quantity);
-      else newQty = dto.quantity; // ADJUSTMENT sets the absolute count
+      const resolved = await resolveStock(tx, dto.productId, dto.variantId);
 
       const movement = await tx.inventoryMovement.create({
         data: {
-          productId: dto.productId,
+          productId: resolved.product.id,
+          variantId: resolved.variant.id,
           type: dto.type,
           quantity: dto.quantity,
           unitCost: dto.unitCost ?? null,
@@ -52,10 +57,13 @@ export class InventoryService {
           occurredAt: dto.occurredAt ?? new Date(),
           createdById: userId,
         },
-        include: { product: { select: { id: true, name: true, sku: true } } },
+        include: {
+          product: { select: { id: true, name: true, sku: true } },
+          variant: { select: { id: true, name: true, packSize: true } },
+        },
       });
 
-      await tx.product.update({ where: { id: dto.productId }, data: { quantityOnHand: newQty } });
+      await applyMovement(tx, resolved, dto.type, dto.quantity);
       return movement;
     });
   }

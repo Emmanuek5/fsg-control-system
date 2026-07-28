@@ -33,6 +33,23 @@ export const MovementType = {
 export type MovementType = (typeof MovementType)[keyof typeof MovementType];
 export const movementTypeSchema = z.nativeEnum(MovementType);
 
+/**
+ * How a product's stock is tracked across its variants.
+ *
+ * PER_VARIANT — each variant keeps its own count. Sealed goods bought and sold
+ * as distinct units (Hypo 500ml vs 1000ml) cannot substitute for one another.
+ *
+ * POOLED — the product holds one pool of stock in its base unit and each
+ * variant draws `packSize` from it. Bulk goods that get repackaged: selling a
+ * 3 kg bag of rice takes 3 kg out of the same pool the loose kilo sells from.
+ */
+export const StockMode = {
+  PER_VARIANT: 'PER_VARIANT',
+  POOLED: 'POOLED',
+} as const;
+export type StockMode = (typeof StockMode)[keyof typeof StockMode];
+export const stockModeSchema = z.nativeEnum(StockMode);
+
 export const SaleChannel = {
   ONLINE: 'ONLINE',
   IN_STORE: 'IN_STORE',

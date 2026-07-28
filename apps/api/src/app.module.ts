@@ -13,6 +13,7 @@ import { ProductsModule } from './products/products.module';
 import { CategoriesModule } from './categories/categories.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { SalesModule } from './sales/sales.module';
+import { CustomersModule } from './customers/customers.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { FarmModule } from './farm/farm.module';
@@ -46,6 +47,7 @@ import { HealthController } from './health/health.controller';
     CategoriesModule,
     InventoryModule,
     SalesModule,
+    CustomersModule,
     DashboardModule,
     UploadsModule,
     FarmModule,

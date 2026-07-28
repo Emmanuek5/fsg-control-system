@@ -1,5 +1,5 @@
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
-import { ALL_PERMISSIONS } from '@fsg/shared';
+import { ALL_PERMISSIONS, DEFAULT_ROLES } from '@fsg/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -19,8 +19,9 @@ export class PermissionsService implements OnModuleInit {
    * Sync the permissions table with the shared catalog on boot so new
    * permission keys reach existing databases without running the seed (the
    * seed also rebuilds default roles, demo logins and sample data, which must
-   * never happen against production). Inserts missing rows only — role
-   * grants, users and business data are never touched here.
+   * never happen against production). Inserts missing rows only — users and
+   * business data are never touched here, and the only grants written are the
+   * brand-new keys handed to full-access system roles (see below).
    */
   async onModuleInit(): Promise<void> {
     const existing = await this.prisma.permission.findMany({ select: { key: true } });
@@ -39,6 +40,36 @@ export class PermissionsService implements OnModuleInit {
     this.logger.log(
       `Added ${missing.length} new permission(s) from catalog: ${missing.map((p) => p.key).join(', ')}`,
     );
+    await this.grantNewPermissionsToFullAccessRoles(missing.map((p) => p.key));
+  }
+
+  /**
+   * A role defined as 'ALL' (Admin) is meant to hold every permission, so a
+   * newly shipped module must not become invisible to it until someone ticks
+   * boxes in Settings → Roles. Only keys that did not exist a moment ago are
+   * granted, so deliberate revocations on any role are never undone.
+   */
+  private async grantNewPermissionsToFullAccessRoles(newKeys: string[]): Promise<void> {
+    const fullAccessRoles = DEFAULT_ROLES.filter((role) => role.permissions === 'ALL').map(
+      (role) => role.name,
+    );
+    const [roles, permissions] = await Promise.all([
+      this.prisma.role.findMany({
+        where: { name: { in: fullAccessRoles }, isSystem: true },
+        select: { id: true },
+      }),
+      this.prisma.permission.findMany({ where: { key: { in: newKeys } }, select: { id: true } }),
+    ]);
+    if (roles.length === 0 || permissions.length === 0) return;
+
+    await this.prisma.rolePermission.createMany({
+      data: roles.flatMap((role) =>
+        permissions.map((permission) => ({ roleId: role.id, permissionId: permission.id })),
+      ),
+      skipDuplicates: true,
+    });
+    this.invalidate();
+    this.logger.log(`Granted the new permission(s) to ${roles.length} full-access role(s)`);
   }
 
   async getRolePermissions(roleId: string): Promise<string[]> {

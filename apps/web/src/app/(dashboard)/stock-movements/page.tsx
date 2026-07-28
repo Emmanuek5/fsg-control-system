@@ -26,12 +26,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { buildSellables, type ProductWithVariants } from '@/lib/sellables';
 
-interface ProductOpt {
-  id: string;
-  name: string;
-  sku: string | null;
-}
+type ProductOpt = ProductWithVariants;
 interface Movement {
   id: string;
   type: MovementType;
@@ -42,8 +39,15 @@ interface Movement {
   receiptUrl: string | null;
   occurredAt: string;
   product: { id: string; name: string; sku: string | null; unit: string } | null;
+  variant: { id: string; name: string; packSize: number } | null;
   createdBy: { id: string; name: string } | null;
 }
+
+/** Movement rows name the variant unless it's the unremarkable lone default. */
+const movementLabel = (m: Movement) =>
+  m.variant && m.variant.name !== 'Default'
+    ? `${m.product?.name ?? '—'} (${m.variant.name})`
+    : (m.product?.name ?? '—');
 
 const typeVariant: Record<MovementType, 'success' | 'destructive' | 'secondary'> = {
   IN: 'success',
@@ -71,7 +75,7 @@ export default function StockMovementsPage() {
       header: 'Product',
       cell: (m) => (
         <div>
-          <div className="font-medium">{m.product?.name ?? '—'}</div>
+          <div className="font-medium">{movementLabel(m)}</div>
           <div className="text-xs text-muted-foreground">{m.product?.sku ?? ''}</div>
         </div>
       ),
@@ -108,7 +112,7 @@ export default function StockMovementsPage() {
           rows={movementsQ.data ?? []}
           columns={[
             { header: 'Date', value: (m) => new Date(m.occurredAt).toISOString() },
-            { header: 'Product', value: (m) => m.product?.name },
+            { header: 'Product', value: (m) => movementLabel(m) },
             { header: 'Type', value: (m) => m.type },
             { header: 'Quantity', value: (m) => m.quantity },
             ...(canSeeFinance ? [{ header: 'Unit cost', value: (m: Movement) => m.unitCost }] : []),
@@ -131,8 +135,10 @@ export default function StockMovementsPage() {
 function MovementDialog({ products }: { products: ProductOpt[] }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const sellables = buildSellables(products);
+  const sellableByKey = new Map(sellables.map((option) => [option.key, option]));
   const [form, setForm] = useState({
-    productId: '',
+    sellableKey: '',
     type: MovementType.IN as MovementType,
     quantity: '',
     unitCost: '',
@@ -140,11 +146,13 @@ function MovementDialog({ products }: { products: ProductOpt[] }) {
     note: '',
     receiptUrl: null as string | null,
   });
+  const selected = sellableByKey.get(form.sellableKey);
 
   const save = useMutation({
     mutationFn: () =>
       api.post('/inventory-movements', {
-        productId: form.productId,
+        productId: selected!.productId,
+        variantId: selected!.variantId,
         type: form.type,
         quantity: Number(form.quantity || 0),
         unitCost: form.unitCost ? Number(form.unitCost) : null,
@@ -159,7 +167,7 @@ function MovementDialog({ products }: { products: ProductOpt[] }) {
       await qc.invalidateQueries({ queryKey: ['kpis'] });
       setOpen(false);
       setForm({
-        productId: '',
+        sellableKey: '',
         type: MovementType.IN,
         quantity: '',
         unitCost: '',
@@ -171,7 +179,7 @@ function MovementDialog({ products }: { products: ProductOpt[] }) {
     onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Could not record movement'),
   });
 
-  const valid = form.productId && Number(form.quantity) > 0;
+  const valid = Boolean(selected) && Number(form.quantity) > 0;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -188,17 +196,21 @@ function MovementDialog({ products }: { products: ProductOpt[] }) {
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Product</Label>
             <Select
-              value={form.productId}
-              onChange={(e) => setForm({ ...form, productId: e.target.value })}
+              value={form.sellableKey}
+              onChange={(e) => setForm({ ...form, sellableKey: e.target.value })}
             >
               <option value="">Select a product…</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.sku ? ` (${p.sku})` : ''}
+              {sellables.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label} ({num(option.available)} available)
                 </option>
               ))}
             </Select>
+            {selected && (
+              <p className="text-xs text-muted-foreground">
+                Quantities are counted in units of “{selected.label.split(' — ')[1] ?? 'this item'}”.
+              </p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>Type</Label>

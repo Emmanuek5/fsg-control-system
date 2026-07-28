@@ -1,12 +1,16 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
-import { MovementType, type ApprovalDecisionDto, type CreateRequestCommentDto, type CreateStockRequestDto, type UpdateStockRequestDto } from '@fsg/shared';
+import { type ApprovalDecisionDto, type CreateRequestCommentDto, type CreateStockRequestDto, type UpdateStockRequestDto } from '@fsg/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionsService } from '../auth/permissions.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { RequestUser } from '../common/current-user.decorator';
+import { applyMovement, defaultVariant, resolveStock } from '../inventory/stock';
 
 const include = {
-  product: { select: { id: true, name: true, sku: true, unit: true, quantityOnHand: true } },
+  product: {
+    select: { id: true, name: true, sku: true, unit: true, quantityOnHand: true, stockMode: true },
+  },
+  variant: { select: { id: true, name: true, packSize: true, quantityOnHand: true } },
   subsidiary: { select: { id: true, name: true } },
   requestedBy: { select: { id: true, name: true, email: true } },
   approvedBy: { select: { id: true, name: true, email: true } },
@@ -53,9 +57,22 @@ export class StockRequestsService {
   }
 
   async create(dto: CreateStockRequestDto, user: RequestUser) {
+    // Pin the variant at request time so approval posts against the same one
+    // even if the product's default changes in between.
+    const variant = dto.variantId
+      ? await this.prisma.productVariant.findFirst({
+          where: { id: dto.variantId, productId: dto.productId },
+          select: { id: true },
+        })
+      : await defaultVariant(this.prisma, dto.productId);
+    if (dto.variantId && !variant) {
+      throw new BadRequestException('That variant does not belong to the selected product');
+    }
+
     const request = await this.prisma.stockRequest.create({
       data: {
         productId: dto.productId,
+        variantId: variant?.id ?? null,
         subsidiaryId: dto.subsidiaryId ?? null,
         type: dto.type,
         quantity: dto.quantity,
@@ -94,6 +111,7 @@ export class StockRequestsService {
       where: { id },
       data: {
         productId: dto.productId,
+        variantId: dto.variantId,
         subsidiaryId: dto.subsidiaryId,
         type: dto.type,
         quantity: dto.quantity,
@@ -123,15 +141,12 @@ export class StockRequestsService {
     if (existing.inventoryMovementId) throw new BadRequestException('This request has already posted stock');
 
     const request = await this.prisma.$transaction(async (tx) => {
-      const product = await tx.product.findUniqueOrThrow({ where: { id: existing.productId } });
-      let newQty = product.quantityOnHand;
-      if (existing.type === MovementType.IN) newQty += existing.quantity;
-      else if (existing.type === MovementType.OUT) newQty = Math.max(0, newQty - existing.quantity);
-      else newQty = existing.quantity;
+      const resolved = await resolveStock(tx, existing.productId, existing.variantId);
 
       const movement = await tx.inventoryMovement.create({
         data: {
-          productId: existing.productId,
+          productId: resolved.product.id,
+          variantId: resolved.variant.id,
           type: existing.type,
           quantity: existing.quantity,
           unitCost: existing.unitCost,
@@ -141,7 +156,7 @@ export class StockRequestsService {
           createdById: existing.requestedById,
         },
       });
-      await tx.product.update({ where: { id: product.id }, data: { quantityOnHand: newQty } });
+      await applyMovement(tx, resolved, existing.type, existing.quantity);
       return tx.stockRequest.update({
         where: { id },
         data: {

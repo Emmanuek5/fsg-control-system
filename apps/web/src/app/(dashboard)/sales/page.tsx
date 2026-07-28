@@ -11,6 +11,7 @@ import {
   ReceiptText,
   ShieldAlert,
   Trash2,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SaleChannel } from '@fsg/shared';
@@ -36,26 +37,52 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { buildSellables, type ProductWithVariants } from '@/lib/sellables';
 
-interface ProductOpt {
+type ProductOpt = ProductWithVariants;
+
+interface CustomerOpt {
   id: string;
   name: string;
-  unit: string;
-  unitPrice: number;
-  quantityOnHand: number;
+  phone: string | null;
+  city: string | null;
 }
+
+interface SaleItem {
+  id: string;
+  productId: string | null;
+  productName: string;
+  /** Null on lines recorded before variants existed. */
+  variantName: string | null;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+/**
+ * A sale line's product, qualified by variant. "Default" is the placeholder
+ * every single-variant product carries, so it adds nothing worth showing.
+ */
+const itemLabel = (item: SaleItem) =>
+  item.variantName && item.variantName !== 'Default'
+    ? `${item.productName} (${item.variantName})`
+    : item.productName;
 
 interface Sale {
   id: string;
-  quantity: number;
-  unitPrice: number;
+  items: SaleItem[];
+  subtotal: number;
+  logisticsFee: number;
   totalAmount: number;
   channel: SaleChannel;
-  customer: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  customer: { id: string; name: string; phone: string | null; city: string | null } | null;
+  note: string | null;
   soldAt: string;
   verifiedAt: string | null;
   proofUrl: string | null;
-  product: { id: string; name: string; unit: string } | null;
   subsidiary: { id: string; name: string } | null;
   createdBy: { id: string; name: string } | null;
   verifiedBy: { id: string; name: string } | null;
@@ -72,6 +99,7 @@ interface SalesDaySummary {
   date: string;
   count: number;
   totalAmount: number;
+  logisticsTotal: number;
   verifiedCount: number;
   unverifiedCount: number;
   proofUrl: string | null;
@@ -96,6 +124,16 @@ function todayInput() {
   const month = String(today.getMonth() + 1).padStart(2, '0');
   const day = String(today.getDate()).padStart(2, '0');
   return `${today.getFullYear()}-${month}-${day}`;
+}
+
+function buyerName(sale: Sale) {
+  return sale.customer?.name ?? sale.customerName ?? null;
+}
+
+function itemsSummary(sale: Sale) {
+  return sale.items
+    .map((item) => `${num(item.quantity)} ${item.unit} × ${itemLabel(item)}`)
+    .join('; ');
 }
 
 export default function SalesPage() {
@@ -127,6 +165,11 @@ export default function SalesPage() {
     queryFn: () => api.get<ProductOpt[]>('/products'),
     enabled: can('sales:create') && can('products:read'),
   });
+  const customersQ = useQuery({
+    queryKey: ['customers', 'sales'],
+    queryFn: () => api.get<CustomerOpt[]>('/customers'),
+    enabled: can('sales:create') && can('customers:read'),
+  });
 
   const deleteSale = useMutation({
     mutationFn: (id: string) => api.del(`/sales/${id}`),
@@ -136,6 +179,7 @@ export default function SalesPage() {
       await qc.invalidateQueries({ queryKey: ['sales-summary'] });
       await qc.invalidateQueries({ queryKey: ['sales-day-summary'] });
       await qc.invalidateQueries({ queryKey: ['products'] });
+      await qc.invalidateQueries({ queryKey: ['customers'] });
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Could not delete sale'),
   });
@@ -143,19 +187,45 @@ export default function SalesPage() {
   const columns: Column<Sale>[] = [
     { header: 'Date', cell: (sale) => fmtDateTime(sale.soldAt) },
     {
-      header: 'Product',
-      cell: (sale) => <span className="font-medium">{sale.product?.name ?? '—'}</span>,
-    },
-    {
-      header: 'Qty',
+      header: 'Items',
       cell: (sale) => (
-        <span>
-          {num(sale.quantity)}{' '}
-          <span className="text-xs text-muted-foreground">{sale.product?.unit ?? ''}</span>
-        </span>
+        <div className="space-y-0.5">
+          {sale.items.map((item) => (
+            <div key={item.id} className="whitespace-nowrap">
+              <span className="font-medium">{itemLabel(item)}</span>{' '}
+              <span className="text-xs text-muted-foreground">
+                {num(item.quantity)} {item.unit} × {naira(item.unitPrice)}
+              </span>
+            </div>
+          ))}
+          {sale.items.length === 0 && <span className="text-muted-foreground">—</span>}
+        </div>
       ),
     },
-    { header: 'Unit price', cell: (sale) => naira(sale.unitPrice) },
+    {
+      header: 'Customer',
+      cell: (sale) => {
+        const name = buyerName(sale);
+        if (!name) return <span className="text-muted-foreground">—</span>;
+        const detail = sale.customer?.phone ?? sale.customer?.city;
+        return (
+          <div>
+            <div>{name}</div>
+            {detail && <div className="text-xs text-muted-foreground">{detail}</div>}
+          </div>
+        );
+      },
+    },
+    { header: 'Subtotal', cell: (sale) => naira(sale.subtotal) },
+    {
+      header: 'Logistics',
+      cell: (sale) =>
+        sale.logisticsFee > 0 ? (
+          naira(sale.logisticsFee)
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
     {
       header: 'Total',
       cell: (sale) => <span className="font-medium">{naira(sale.totalAmount)}</span>,
@@ -166,7 +236,6 @@ export default function SalesPage() {
         <Badge variant={channelVariant[sale.channel]}>{channelLabel[sale.channel]}</Badge>
       ),
     },
-    { header: 'Customer', cell: (sale) => sale.customer ?? '—' },
     { header: 'Recorded by', cell: (sale) => sale.createdBy?.name ?? '—' },
     {
       header: 'Status',
@@ -220,18 +289,22 @@ export default function SalesPage() {
           rows={salesQ.data ?? []}
           columns={[
             { header: 'Date', value: (sale) => new Date(sale.soldAt).toISOString() },
-            { header: 'Product', value: (sale) => sale.product?.name },
-            { header: 'Qty', value: (sale) => sale.quantity },
-            { header: 'Unit price', value: (sale) => sale.unitPrice },
+            { header: 'Items', value: (sale) => itemsSummary(sale) },
+            { header: 'Customer', value: (sale) => buyerName(sale) },
+            { header: 'Subtotal', value: (sale) => sale.subtotal },
+            { header: 'Logistics fee', value: (sale) => sale.logisticsFee },
             { header: 'Total', value: (sale) => sale.totalAmount },
             { header: 'Channel', value: (sale) => channelLabel[sale.channel] },
-            { header: 'Customer', value: (sale) => sale.customer },
             { header: 'Recorded by', value: (sale) => sale.createdBy?.name },
             { header: 'Verified', value: (sale) => (sale.verifiedAt ? 'Yes' : 'No') },
           ]}
         />
         {can('sales:create') && (
-          <SaleDialog products={productsQ.data ?? []} productsLoading={productsQ.isLoading} />
+          <SaleDialog
+            products={productsQ.data ?? []}
+            productsLoading={productsQ.isLoading}
+            customers={customersQ.data ?? []}
+          />
         )}
       </PageHeader>
 
@@ -319,42 +392,84 @@ export default function SalesPage() {
   );
 }
 
+interface LineForm {
+  /** `${productId}:${variantId}` — the key of the chosen sellable. */
+  sellableKey: string;
+  quantity: string;
+  unitPrice: string;
+}
+
+const emptyLine: LineForm = { sellableKey: '', quantity: '1', unitPrice: '' };
+
 function SaleDialog({
   products,
   productsLoading,
+  customers,
 }: {
   products: ProductOpt[];
   productsLoading: boolean;
+  customers: CustomerOpt[];
 }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [lines, setLines] = useState<LineForm[]>([{ ...emptyLine }]);
   const [form, setForm] = useState({
-    productId: '',
-    quantity: '',
-    unitPrice: '',
+    customerId: '',
+    customerName: '',
+    logisticsFee: '',
     channel: SaleChannel.ONLINE as SaleChannel,
-    customer: '',
+    note: '',
     soldAt: '',
   });
 
-  const resetForm = () =>
+  const resetForm = () => {
+    setLines([{ ...emptyLine }]);
     setForm({
-      productId: '',
-      quantity: '',
-      unitPrice: '',
+      customerId: '',
+      customerName: '',
+      logisticsFee: '',
       channel: SaleChannel.ONLINE,
-      customer: '',
+      note: '',
       soldAt: '',
     });
+  };
+
+  const sellables = buildSellables(products);
+  const sellableByKey = new Map(sellables.map((option) => [option.key, option]));
+  const priced = lines.map((line) => {
+    const option = sellableByKey.get(line.sellableKey);
+    const quantity = Number(line.quantity || 0);
+    const unitPrice = line.unitPrice === '' ? (option?.unitPrice ?? 0) : Number(line.unitPrice);
+    return { line, option, quantity, unitPrice, lineTotal: quantity * unitPrice };
+  });
+  const subtotal = priced.reduce((sum, row) => sum + (row.option ? row.lineTotal : 0), 0);
+  const logisticsFee = Number(form.logisticsFee || 0);
+  const total = subtotal + logisticsFee;
+
+  const overStock = priced.some((row) => row.option && row.quantity > row.option.available);
+  const valid =
+    priced.length > 0 &&
+    priced.every((row) => row.option && row.quantity > 0 && row.unitPrice >= 0) &&
+    !overStock &&
+    logisticsFee >= 0;
+
+  const updateLine = (index: number, patch: Partial<LineForm>) =>
+    setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
 
   const save = useMutation({
     mutationFn: () =>
       api.post('/sales', {
-        productId: form.productId,
-        quantity: Number(form.quantity),
-        unitPrice: Number(form.unitPrice),
+        items: priced.map((row) => ({
+          productId: row.option!.productId,
+          variantId: row.option!.variantId,
+          quantity: row.quantity,
+          unitPrice: row.unitPrice,
+        })),
+        logisticsFee,
         channel: form.channel,
-        customer: form.customer || null,
+        customerId: form.customerId || null,
+        customerName: form.customerId ? null : form.customerName.trim() || null,
+        note: form.note.trim() || null,
         soldAt: form.soldAt || undefined,
       }),
     onSuccess: async () => {
@@ -363,18 +478,12 @@ function SaleDialog({
       await qc.invalidateQueries({ queryKey: ['sales-summary'] });
       await qc.invalidateQueries({ queryKey: ['sales-day-summary'] });
       await qc.invalidateQueries({ queryKey: ['products'] });
+      await qc.invalidateQueries({ queryKey: ['customers'] });
       setOpen(false);
       resetForm();
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Could not record sale'),
   });
-
-  const selectedProduct = products.find((product) => product.id === form.productId);
-  const valid =
-    form.productId &&
-    Number(form.quantity) > 0 &&
-    form.unitPrice !== '' &&
-    Number(form.unitPrice) >= 0;
 
   return (
     <Dialog
@@ -389,57 +498,151 @@ function SaleDialog({
           <Plus className="size-4" /> Record sale
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Record sale</DialogTitle>
         </DialogHeader>
+
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label>Product</Label>
+          <div className="space-y-1.5">
+            <Label>Customer</Label>
             <Select
-              value={form.productId}
-              onChange={(e) => {
-                const product = products.find((item) => item.id === e.target.value);
-                setForm({
-                  ...form,
-                  productId: e.target.value,
-                  unitPrice: product ? String(product.unitPrice) : '',
-                });
-              }}
-              disabled={productsLoading}
+              value={form.customerId}
+              onChange={(e) => setForm({ ...form, customerId: e.target.value })}
             >
-              <option value="">
-                {productsLoading ? 'Loading products…' : 'Select a product…'}
-              </option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name} ({num(product.quantityOnHand)} {product.unit} in stock)
+              <option value="">Walk-in / not listed</option>
+              {customers.map((customer) => (
+                <option key={customer.id} value={customer.id}>
+                  {customer.name}
+                  {customer.city ? ` — ${customer.city}` : ''}
                 </option>
               ))}
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Quantity</Label>
+            <Label>Buyer name</Label>
             <Input
-              type="number"
-              min="1"
-              step="1"
-              value={form.quantity}
-              onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+              value={form.customerName}
+              maxLength={120}
+              disabled={Boolean(form.customerId)}
+              onChange={(e) => setForm({ ...form, customerName: e.target.value })}
+              placeholder={form.customerId ? 'Using selected customer' : 'Optional'}
             />
-            {selectedProduct && (
-              <p className="text-xs text-muted-foreground">
-                {num(selectedProduct.quantityOnHand)} {selectedProduct.unit} available
-              </p>
-            )}
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Products</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setLines([...lines, { ...emptyLine }])}
+            >
+              <Plus className="size-4" /> Add product
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            {priced.map((row, index) => {
+              // Each product *variant* may only appear once per sale — two
+              // sizes of the same rice on one order are perfectly normal.
+              const taken = new Set(
+                lines.filter((_, i) => i !== index).map((line) => line.sellableKey),
+              );
+              return (
+                <div
+                  key={index}
+                  className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_90px_120px_auto] sm:items-start"
+                >
+                  <div className="space-y-1">
+                    <Select
+                      value={row.line.sellableKey}
+                      onChange={(e) => {
+                        const option = sellableByKey.get(e.target.value);
+                        updateLine(index, {
+                          sellableKey: e.target.value,
+                          unitPrice: option ? String(option.unitPrice) : '',
+                        });
+                      }}
+                      disabled={productsLoading}
+                      aria-label={`Product ${index + 1}`}
+                    >
+                      <option value="">
+                        {productsLoading ? 'Loading products…' : 'Select a product…'}
+                      </option>
+                      {sellables
+                        .filter((option) => !taken.has(option.key))
+                        .map((option) => (
+                          <option key={option.key} value={option.key}>
+                            {option.label} ({num(option.available)} available)
+                          </option>
+                        ))}
+                    </Select>
+                    {row.option && (
+                      <p
+                        className={
+                          row.quantity > row.option.available
+                            ? 'text-xs text-destructive'
+                            : 'text-xs text-muted-foreground'
+                        }
+                      >
+                        {num(row.option.available)} available
+                        {row.quantity > row.option.available && ' — not enough stock'}
+                      </p>
+                    )}
+                  </div>
+
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={row.line.quantity}
+                    onChange={(e) => updateLine(index, { quantity: e.target.value })}
+                    aria-label={`Quantity ${index + 1}`}
+                    placeholder="Qty"
+                  />
+                  <Input
+                    type="number"
+                    min="0"
+                    value={row.line.unitPrice}
+                    onChange={(e) => updateLine(index, { unitPrice: e.target.value })}
+                    aria-label={`Unit price ${index + 1}`}
+                    placeholder="Unit price"
+                  />
+
+                  <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-end">
+                    <span className="text-sm font-medium tabular-nums">
+                      {naira(row.option ? row.lineTotal : 0)}
+                    </span>
+                    {lines.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Remove product ${index + 1}`}
+                        onClick={() => setLines(lines.filter((_, i) => i !== index))}
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label>Unit price (₦)</Label>
+            <Label>Logistics / delivery fee (₦)</Label>
             <Input
               type="number"
               min="0"
-              value={form.unitPrice}
-              onChange={(e) => setForm({ ...form, unitPrice: e.target.value })}
+              value={form.logisticsFee}
+              onChange={(e) => setForm({ ...form, logisticsFee: e.target.value })}
+              placeholder="0"
             />
           </div>
           <div className="space-y-1.5">
@@ -456,15 +659,6 @@ function SaleDialog({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Customer</Label>
-            <Input
-              value={form.customer}
-              maxLength={120}
-              onChange={(e) => setForm({ ...form, customer: e.target.value })}
-              placeholder="Optional"
-            />
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
             <Label>Date</Label>
             <Input
               type="date"
@@ -473,7 +667,32 @@ function SaleDialog({
             />
             <p className="text-xs text-muted-foreground">Leave blank to use the current date.</p>
           </div>
+          <div className="space-y-1.5">
+            <Label>Note</Label>
+            <Input
+              value={form.note}
+              maxLength={300}
+              onChange={(e) => setForm({ ...form, note: e.target.value })}
+              placeholder="Optional"
+            />
+          </div>
         </div>
+
+        <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span className="tabular-nums">{naira(subtotal)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Logistics</span>
+            <span className="tabular-nums">{naira(logisticsFee)}</span>
+          </div>
+          <div className="flex justify-between border-t pt-1 font-display text-base font-semibold">
+            <span>Total</span>
+            <span className="tabular-nums">{naira(total)}</span>
+          </div>
+        </div>
+
         <DialogFooter>
           <Button onClick={() => save.mutate()} disabled={!valid || save.isPending}>
             {save.isPending && <Loader2 className="size-4 animate-spin" />}
@@ -533,7 +752,7 @@ function EndOfDayCard() {
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3 rounded-lg border bg-muted/30 p-3">
+          <div className="grid grid-cols-4 gap-3 rounded-lg border bg-muted/30 p-3">
             <div>
               <p className="text-xs text-muted-foreground">Transactions</p>
               <p className="mt-0.5 font-display text-lg font-semibold tabular-nums">
@@ -544,6 +763,12 @@ function EndOfDayCard() {
               <p className="text-xs text-muted-foreground">Total</p>
               <p className="mt-0.5 font-display text-lg font-semibold tabular-nums">
                 {daySummaryQ.isLoading ? '—' : naira(summary?.totalAmount)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Logistics</p>
+              <p className="mt-0.5 font-display text-lg font-semibold tabular-nums">
+                {daySummaryQ.isLoading ? '—' : naira(summary?.logisticsTotal)}
               </p>
             </div>
             <div>

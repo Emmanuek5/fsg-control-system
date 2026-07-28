@@ -6,6 +6,7 @@ const LABELS: Record<string, string> = {
   products: 'Product',
   'inventory-movements': 'Stock movement',
   sales: 'Sale',
+  customers: 'Customer',
   expenses: 'Expense',
   crops: 'Crop',
   livestock: 'Livestock',

@@ -10,6 +10,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { fmtDateTime, naira, num } from '@/lib/format';
 import { movementLabel, statusLabel, statusVariant } from '@/lib/approval';
+import { buildSellables, type ProductWithVariants } from '@/lib/sellables';
 import { PageHeader } from '@/components/page-header';
 import { DataTable, type Column } from '@/components/data-table';
 import { FileUpload } from '@/components/file-upload';
@@ -21,7 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 
-interface ProductOpt { id: string; name: string; sku: string | null; quantityOnHand: number; }
+type ProductOpt = ProductWithVariants;
 interface Subsidiary { id: string; name: string; }
 interface StockRequest {
   id: string;
@@ -32,6 +33,7 @@ interface StockRequest {
   status: ApprovalStatus;
   createdAt: string;
   product: { id: string; name: string; sku: string | null; unit: string; quantityOnHand: number };
+  variant: { id: string; name: string; packSize: number; quantityOnHand: number } | null;
   subsidiary: { id: string; name: string } | null;
   requestedBy: { id: string; name: string; email: string } | null;
 }
@@ -48,7 +50,7 @@ export default function StockRequestsPage() {
 
   const columns: Column<StockRequest>[] = [
     { header: 'Date', cell: (r) => fmtDateTime(r.createdAt) },
-    { header: 'Product', cell: (r) => <div><div className="font-medium">{r.product.name}</div><div className="text-xs text-muted-foreground">{r.product.sku ?? 'No SKU'}</div></div> },
+    { header: 'Product', cell: (r) => <div><div className="font-medium">{r.product.name}</div><div className="text-xs text-muted-foreground">{r.variant && r.variant.name !== 'Default' ? r.variant.name : (r.product.sku ?? 'No SKU')}</div></div> },
     { header: 'Type', cell: (r) => movementLabel[r.type] },
     { header: 'Quantity', cell: (r) => `${num(r.quantity)} ${r.product.unit}` },
     { header: 'Unit cost', cell: (r) => r.unitCost != null ? naira(r.unitCost) : '-' },
@@ -80,26 +82,29 @@ export default function StockRequestsPage() {
 function StockRequestDialog({ products, subsidiaries }: { products: ProductOpt[]; subsidiaries: Subsidiary[] }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ productId: '', subsidiaryId: '', type: MovementType.IN as MovementType, quantity: '', unitCost: '', reference: '', note: '', receiptUrl: null as string | null });
+  const sellables = buildSellables(products);
+  const sellableByKey = new Map(sellables.map((option) => [option.key, option]));
+  const [form, setForm] = useState({ sellableKey: '', subsidiaryId: '', type: MovementType.IN as MovementType, quantity: '', unitCost: '', reference: '', note: '', receiptUrl: null as string | null });
+  const selected = sellableByKey.get(form.sellableKey);
   const save = useMutation({
-    mutationFn: () => api.post('/stock-requests', { productId: form.productId, subsidiaryId: form.subsidiaryId || null, type: form.type, quantity: Number(form.quantity || 0), unitCost: form.unitCost ? Number(form.unitCost) : null, reference: form.reference || null, note: form.note || null, receiptUrl: form.receiptUrl }),
+    mutationFn: () => api.post('/stock-requests', { productId: selected!.productId, variantId: selected!.variantId, subsidiaryId: form.subsidiaryId || null, type: form.type, quantity: Number(form.quantity || 0), unitCost: form.unitCost ? Number(form.unitCost) : null, reference: form.reference || null, note: form.note || null, receiptUrl: form.receiptUrl }),
     onSuccess: async () => {
       toast.success('Stock request submitted');
       await qc.invalidateQueries({ queryKey: ['stock-requests'] });
       await qc.invalidateQueries({ queryKey: ['notifications-unread-count'] });
       setOpen(false);
-      setForm({ productId: '', subsidiaryId: '', type: MovementType.IN, quantity: '', unitCost: '', reference: '', note: '', receiptUrl: null });
+      setForm({ sellableKey: '', subsidiaryId: '', type: MovementType.IN, quantity: '', unitCost: '', reference: '', note: '', receiptUrl: null });
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Could not submit request'),
   });
-  const valid = form.productId && Number(form.quantity) > 0;
+  const valid = Boolean(selected) && Number(form.quantity) > 0;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild><Button><Plus className="size-4" /> New request</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>New stock request</DialogTitle></DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5 sm:col-span-2"><Label>Product</Label><Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}><option value="">Select product</option>{products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.sku ? ` (${p.sku})` : ''}</option>)}</Select></div>
+          <div className="space-y-1.5 sm:col-span-2"><Label>Product</Label><Select value={form.sellableKey} onChange={(e) => setForm({ ...form, sellableKey: e.target.value })}><option value="">Select product</option>{sellables.map((option) => <option key={option.key} value={option.key}>{option.label} ({num(option.available)} available)</option>)}</Select></div>
           <div className="space-y-1.5"><Label>Zone</Label><Select value={form.subsidiaryId} onChange={(e) => setForm({ ...form, subsidiaryId: e.target.value })}><option value="">General</option>{subsidiaries.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></div>
           <div className="space-y-1.5"><Label>Type</Label><Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as MovementType })}><option value="IN">Stock In</option><option value="OUT">Stock Out</option><option value="ADJUSTMENT">Adjustment</option></Select></div>
           <div className="space-y-1.5"><Label>Quantity</Label><Input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></div>

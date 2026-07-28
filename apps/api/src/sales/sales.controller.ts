@@ -24,10 +24,11 @@ export class SalesController {
     @Query('to') to?: string,
     @Query('channel') channel?: string,
     @Query('productId') productId?: string,
+    @Query('customerId') customerId?: string,
     @Query('subsidiaryId') subsidiaryId?: string,
     @Query('verified') verified?: string,
   ) {
-    return this.sales.list({ from, to, channel, productId, subsidiaryId, verified });
+    return this.sales.list({ from, to, channel, productId, customerId, subsidiaryId, verified });
   }
 
   @Get('summary')

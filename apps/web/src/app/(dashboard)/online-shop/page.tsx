@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Loader2, Pencil, Plus, Search, Tags, Trash2, X } from 'lucide-react';
+import { Check, Layers, Loader2, Pencil, Plus, Search, Tags, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, ApiError, fileUrl } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
@@ -24,6 +24,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { VariantsDialog, type ProductVariant } from './variants-dialog';
 
 interface Subsidiary {
   id: string;
@@ -43,6 +44,7 @@ interface Product {
   category: { id: string; name: string } | null;
   description: string | null;
   unit: string;
+  stockMode: 'PER_VARIANT' | 'POOLED';
   unitPrice: number;
   costPrice: number | null;
   quantityOnHand: number;
@@ -50,6 +52,7 @@ interface Product {
   imageUrl: string | null;
   subsidiaryId: string | null;
   subsidiary: { id: string; name: string } | null;
+  variants: ProductVariant[];
 }
 
 export default function OnlineShopPage() {
@@ -109,6 +112,29 @@ export default function OnlineShopPage() {
       ),
     },
     { header: 'Category', cell: (p) => p.category?.name ?? '—' },
+    {
+      header: 'Variants',
+      cell: (p) => (
+        <VariantsDialog
+          productId={p.id}
+          productName={p.name}
+          unit={p.unit}
+          pooled={p.stockMode === 'POOLED'}
+          variants={p.variants ?? []}
+          trigger={
+            <Button variant="ghost" size="sm" className="gap-1.5">
+              <Layers className="size-4" />
+              {p.variants?.length ?? 0}
+              {p.stockMode === 'POOLED' && (
+                <Badge variant="secondary" className="ml-1">
+                  Pooled
+                </Badge>
+              )}
+            </Button>
+          }
+        />
+      ),
+    },
     {
       header: 'Price',
       cell: (p) => (
@@ -255,6 +281,7 @@ function ProductDialog({
     sku: product?.sku ?? '',
     categoryId: product?.categoryId ?? '',
     unit: product?.unit ?? 'pcs',
+    stockMode: product?.stockMode ?? 'PER_VARIANT',
     unitPrice: String(product?.unitPrice ?? ''),
     costPrice: String(product?.costPrice ?? ''),
     quantityOnHand: String(product?.quantityOnHand ?? '0'),
@@ -262,6 +289,10 @@ function ProductDialog({
     subsidiaryId: product?.subsidiaryId ?? '',
     imageUrl: product?.imageUrl ?? null,
   });
+  const pooled = form.stockMode === 'POOLED';
+  // On an existing PER_VARIANT product the quantity column is a rollup of the
+  // variants, so editing it here would be silently discarded — variants own it.
+  const showQuantity = pooled || !product;
 
   const save = useMutation({
     mutationFn: () => {
@@ -270,12 +301,13 @@ function ProductDialog({
         sku: form.sku || null,
         categoryId: form.categoryId || null,
         unit: form.unit || 'pcs',
+        stockMode: form.stockMode,
         unitPrice: Number(form.unitPrice || 0),
-        quantityOnHand: Number(form.quantityOnHand || 0),
         reorderLevel: Number(form.reorderLevel || 0),
         subsidiaryId: form.subsidiaryId || null,
         imageUrl: form.imageUrl,
       };
+      if (showQuantity) payload.quantityOnHand = Number(form.quantityOnHand || 0);
       if (showCostInput) payload.costPrice = Number(form.costPrice || 0);
       return product
         ? api.patch(`/products/${product.id}`, payload)
@@ -323,12 +355,36 @@ function ProductDialog({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Unit of measure</Label>
+            <Label>{pooled ? 'Base unit of measure' : 'Unit of measure'}</Label>
             <Input
               value={form.unit}
               onChange={(e) => setForm({ ...form, unit: e.target.value })}
               placeholder="e.g. pcs, kg, crate, bag"
             />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Stock tracking</Label>
+            <Select
+              value={form.stockMode}
+              onChange={(e) => setForm({ ...form, stockMode: e.target.value as Product['stockMode'] })}
+            >
+              <option value="PER_VARIANT">Per variant — each size counted separately</option>
+              <option value="POOLED">Pooled — one bulk pool, variants are pack sizes</option>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {pooled ? (
+                <>
+                  Stock is held as a single pool in <strong>{form.unit || 'base units'}</strong>.
+                  Selling a 3&nbsp;{form.unit || 'unit'} pack takes 3 out of it. Use for rice, beans,
+                  garri, oil — anything bought in bulk and repackaged.
+                </>
+              ) : (
+                <>
+                  Each variant keeps its own count. Use for sealed goods where sizes cannot
+                  substitute — bottles, cartons, packs.
+                </>
+              )}
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label>Selling price (₦)</Label>
@@ -348,14 +404,24 @@ function ProductDialog({
               />
             </div>
           )}
-          <div className="space-y-1.5">
-            <Label>Quantity on hand</Label>
-            <Input
-              type="number"
-              value={form.quantityOnHand}
-              onChange={(e) => setForm({ ...form, quantityOnHand: e.target.value })}
-            />
-          </div>
+          {showQuantity ? (
+            <div className="space-y-1.5">
+              <Label>{pooled ? `Pool quantity (${form.unit || 'base units'})` : 'Quantity on hand'}</Label>
+              <Input
+                type="number"
+                value={form.quantityOnHand}
+                onChange={(e) => setForm({ ...form, quantityOnHand: e.target.value })}
+              />
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label>Quantity on hand</Label>
+              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                {num(product?.quantityOnHand ?? 0)} across {product?.variants?.length ?? 0} variant
+                {(product?.variants?.length ?? 0) === 1 ? '' : 's'} — edit stock per variant.
+              </p>
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label>Reorder level</Label>
             <Input
