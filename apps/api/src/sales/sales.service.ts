@@ -250,6 +250,7 @@ export class SalesService {
           channel: dto.channel,
           note: dto.note ?? null,
           soldAt,
+          proofUrl: dto.proofUrl ?? null,
           createdById: userId,
           items: { create: lines },
         },
@@ -260,15 +261,21 @@ export class SalesService {
 
   async verifyDay(dto: VerifySalesDayDto, userId: string) {
     const { start, next } = this.dayRange(dto.date);
-    const result = await this.prisma.sale.updateMany({
-      where: { soldAt: { gte: start, lt: next }, verifiedAt: null },
-      data: {
-        verifiedAt: new Date(),
-        verifiedById: userId,
-        ...(dto.proofUrl !== undefined ? { proofUrl: dto.proofUrl } : {}),
-      },
+    return this.prisma.$transaction(async (tx) => {
+      // A day-level proof only fills the gaps — sales that carry their own
+      // proof (attached when the sale was recorded) keep it.
+      if (dto.proofUrl != null) {
+        await tx.sale.updateMany({
+          where: { soldAt: { gte: start, lt: next }, verifiedAt: null, proofUrl: null },
+          data: { proofUrl: dto.proofUrl },
+        });
+      }
+      const result = await tx.sale.updateMany({
+        where: { soldAt: { gte: start, lt: next }, verifiedAt: null },
+        data: { verifiedAt: new Date(), verifiedById: userId },
+      });
+      return { verified: result.count };
     });
-    return { verified: result.count };
   }
 
   async remove(id: string) {

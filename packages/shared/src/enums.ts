@@ -73,6 +73,17 @@ export const BatchStatus = {
 export type BatchStatus = (typeof BatchStatus)[keyof typeof BatchStatus];
 export const batchStatusSchema = z.nativeEnum(BatchStatus);
 
+/**
+ * Goods leaving a farm batch: collected eggs sent to the shop (or elsewhere),
+ * or broilers slaughtered/processed and sent out for sale.
+ */
+export const FarmDispatchType = {
+  EGGS: 'EGGS',
+  BIRDS: 'BIRDS',
+} as const;
+export type FarmDispatchType = (typeof FarmDispatchType)[keyof typeof FarmDispatchType];
+export const farmDispatchTypeSchema = z.nativeEnum(FarmDispatchType);
+
 export const CropStatus = {
   PLANNED: 'PLANNED',
   PLANTED: 'PLANTED',

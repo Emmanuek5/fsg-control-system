@@ -8,10 +8,12 @@ import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { fmtDate, naira, num, toDateInput } from '@/lib/format';
+import { buildSellables, type ProductWithVariants } from '@/lib/sellables';
 import { PageHeader } from '@/components/page-header';
 import { DataTable, type Column } from '@/components/data-table';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -41,7 +43,20 @@ interface FeedRow {
   date: string;
   feedType: string | null;
   quantityKg: number;
+  quantityBags: number;
+  costPerBag: number | null;
   cost: number | null;
+}
+interface DispatchRow {
+  id: string;
+  type: 'EGGS' | 'BIRDS';
+  date: string;
+  quantity: number;
+  unitsAdded: number | null;
+  destination: string | null;
+  note: string | null;
+  product: { id: string; name: string; unit: string } | null;
+  variant: { id: string; name: string } | null;
 }
 interface BatchDetailData {
   id: string;
@@ -55,9 +70,14 @@ interface BatchDetailData {
   mortalityTotal: number;
   totalEggs: number;
   totalFeedKg: number;
+  totalFeedBags: number;
+  eggsSent: number;
+  eggsOnHand: number;
+  birdsProcessed: number;
   eggProduction: EggRow[];
   mortalityRecords: MortalityRow[];
   feedRecords: FeedRow[];
+  dispatches: DispatchRow[];
 }
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
@@ -94,16 +114,25 @@ export function BatchDetail({ batchId, type }: { batchId: string; type: 'LAYERS'
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Stat label="Birds alive" value={num(b?.currentAlive ?? 0)} />
         {type === 'LAYERS' && <Stat label="Total eggs" value={num(b?.totalEggs ?? 0)} />}
+        {type === 'LAYERS' && <Stat label="Eggs sent out" value={num(b?.eggsSent ?? 0)} />}
+        {type === 'BROILERS' && <Stat label="Birds processed" value={num(b?.birdsProcessed ?? 0)} />}
         <Stat label="Total mortality" value={num(b?.mortalityTotal ?? 0)} />
-        <Stat label="Feed used (kg)" value={num(b?.totalFeedKg ?? 0)} />
+        <Stat label="Feed used (bags)" value={num(b?.totalFeedBags ?? 0)} />
       </div>
 
       {type === 'LAYERS' && (
         <EggSection batchId={batchId} rows={b?.eggProduction ?? []} loading={q.isLoading} />
       )}
+      <DispatchSection
+        batchId={batchId}
+        type={type}
+        rows={b?.dispatches ?? []}
+        loading={q.isLoading}
+        available={type === 'LAYERS' ? (b?.eggsOnHand ?? 0) : (b?.currentAlive ?? 0)}
+      />
       <MortalitySection batchId={batchId} rows={b?.mortalityRecords ?? []} loading={q.isLoading} />
       <FeedSection batchId={batchId} rows={b?.feedRecords ?? []} loading={q.isLoading} />
     </div>
@@ -229,6 +258,217 @@ function EggSection({
   );
 }
 
+/**
+ * Goods leaving the batch — eggs to the shop for layers, processed birds for
+ * broilers. Linking a shop product posts the stock in immediately; leaving it
+ * out just records the dispatch.
+ */
+function DispatchSection({
+  batchId,
+  type,
+  rows,
+  loading,
+  available,
+}: {
+  batchId: string;
+  type: 'LAYERS' | 'BROILERS';
+  rows: DispatchRow[];
+  loading: boolean;
+  available: number;
+}) {
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const isEggs = type === 'LAYERS';
+  const title = isEggs ? 'Eggs Sent Out' : 'Birds Processed';
+
+  const emptyForm = {
+    date: toDateInput(new Date()),
+    quantity: '',
+    sellableKey: '',
+    unitsAdded: '',
+    destination: '',
+    note: '',
+  };
+  const [form, setForm] = useState(emptyForm);
+
+  const productsQ = useQuery({
+    queryKey: ['products', 'farm-dispatch'],
+    queryFn: () => api.get<ProductWithVariants[]>('/products'),
+    enabled: open && can('products:read'),
+  });
+  const sellables = buildSellables(productsQ.data ?? []);
+  const selected = sellables.find((option) => option.key === form.sellableKey);
+
+  const quantity = Number(form.quantity || 0);
+  // Eggs conventionally move as crates of 30 (same rule the egg log uses for
+  // trays); birds go out one-for-one as dressed birds.
+  const suggestedUnits = isEggs ? Math.floor(quantity / 30) : quantity;
+  const unitsAdded = form.unitsAdded === '' ? suggestedUnits : Number(form.unitsAdded);
+
+  const m = useMutation({
+    mutationFn: () =>
+      api.post('/farm/dispatch', {
+        batchId,
+        date: form.date,
+        quantity,
+        productId: selected?.productId ?? null,
+        variantId: selected?.variantId ?? null,
+        unitsAdded: selected && unitsAdded > 0 ? unitsAdded : null,
+        destination: form.destination || null,
+        note: form.note || null,
+      }),
+    onSuccess: async () => {
+      toast.success(`${title} recorded`);
+      await qc.invalidateQueries({ queryKey: ['farm-batch', batchId] });
+      await qc.invalidateQueries({ queryKey: ['farm-batches'] });
+      await qc.invalidateQueries({ queryKey: ['products'] });
+      setOpen(false);
+      setForm(emptyForm);
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Save failed'),
+  });
+
+  const columns: Column<DispatchRow>[] = [
+    { header: 'Date', cell: (r) => fmtDate(r.date) },
+    { header: isEggs ? 'Eggs' : 'Birds', cell: (r) => num(r.quantity) },
+    {
+      header: 'Sent to shop as',
+      cell: (r) =>
+        r.product ? (
+          <div>
+            <div>{r.product.name}{r.variant && r.variant.name !== 'Default' ? ` — ${r.variant.name}` : ''}</div>
+            {r.unitsAdded != null && (
+              <div className="text-xs text-muted-foreground">+{num(r.unitsAdded)} added to stock</div>
+            )}
+          </div>
+        ) : (
+          '—'
+        ),
+    },
+    { header: 'Destination', cell: (r) => r.destination ?? '—' },
+    { header: 'Note', cell: (r) => r.note ?? '—' },
+  ];
+
+  const valid = quantity > 0 && quantity <= available && (!selected || unitsAdded > 0);
+
+  return (
+    <section>
+      <SectionHeader
+        title={title}
+        action={
+          can('farm:create') && (
+            <Dialog
+              open={open}
+              onOpenChange={(next) => {
+                setOpen(next);
+                if (next) setForm(emptyForm);
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button size="sm">
+                  <Plus className="size-4" /> {isEggs ? 'Send out eggs' : 'Record processing'}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{isEggs ? 'Send out eggs' : 'Record birds processed'}</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Date</Label>
+                    <Input
+                      type="date"
+                      value={form.date}
+                      onChange={(e) => setForm({ ...form, date: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{isEggs ? 'Eggs sent' : 'Birds processed'}</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={form.quantity}
+                      onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                    />
+                    <p className={quantity > available ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+                      {num(available)} {isEggs ? 'eggs on hand' : 'birds alive'}
+                      {quantity > available && ' — not enough'}
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Add to shop stock as</Label>
+                    <Combobox
+                      aria-label="Shop product"
+                      value={form.sellableKey}
+                      onChange={(key) => setForm({ ...form, sellableKey: key })}
+                      options={[
+                        { value: '', label: 'Don’t add to shop stock' },
+                        ...sellables.map((option) => ({
+                          value: option.key,
+                          label: option.label,
+                          hint: `${num(option.available)} in stock`,
+                        })),
+                      ]}
+                      placeholder={productsQ.isLoading ? 'Loading products…' : 'Don’t add to shop stock'}
+                    />
+                  </div>
+                  {selected && (
+                    <div className="space-y-1.5">
+                      <Label>Units to add ({selected.unit})</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={form.unitsAdded}
+                        placeholder={String(suggestedUnits)}
+                        onChange={(e) => setForm({ ...form, unitsAdded: e.target.value })}
+                      />
+                      {isEggs && (
+                        <p className="text-xs text-muted-foreground">
+                          Suggested {num(suggestedUnits)} from {num(quantity)} eggs at 30 per crate.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label>Destination</Label>
+                    <Input
+                      value={form.destination}
+                      maxLength={160}
+                      placeholder="e.g. FSG Online Shop"
+                      onChange={(e) => setForm({ ...form, destination: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Note</Label>
+                    <Input
+                      value={form.note}
+                      maxLength={300}
+                      onChange={(e) => setForm({ ...form, note: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={() => m.mutate()} disabled={!valid || m.isPending}>
+                    {m.isPending && <Loader2 className="size-4 animate-spin" />}
+                    Record
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )
+        }
+      />
+      <DataTable
+        columns={columns}
+        rows={rows}
+        loading={loading}
+        empty={isEggs ? 'No eggs sent out yet.' : 'No processing records yet.'}
+      />
+    </section>
+  );
+}
+
 function MortalitySection({
   batchId,
   rows,
@@ -332,22 +572,31 @@ function FeedSection({
   const [form, setForm] = useState({
     date: toDateInput(new Date()),
     feedType: '',
-    quantityKg: '',
-    cost: '',
+    quantityBags: '',
+    costPerBag: '',
   });
   const m = useRecordMutation(batchId, '/farm/feed', 'Feed', () => {
     setOpen(false);
-    setForm({ date: toDateInput(new Date()), feedType: '', quantityKg: '', cost: '' });
+    setForm({ date: toDateInput(new Date()), feedType: '', quantityBags: '', costPerBag: '' });
   });
+  const totalCost = Number(form.quantityBags || 0) * Number(form.costPerBag || 0);
 
   const columns: Column<FeedRow>[] = [
     { header: 'Date', cell: (r) => fmtDate(r.date) },
     { header: 'Feed type', cell: (r) => r.feedType ?? '—' },
-    { header: 'Qty (kg)', cell: (r) => num(r.quantityKg) },
+    {
+      header: 'Quantity',
+      // Records from before the bags change only carry kg.
+      cell: (r) => (r.quantityBags > 0 ? `${num(r.quantityBags)} bags` : `${num(r.quantityKg)} kg`),
+    },
     ...(can('finance:read')
       ? [
           {
-            header: 'Cost',
+            header: 'Cost / bag',
+            cell: (r) => (r.costPerBag != null ? naira(r.costPerBag) : '—'),
+          } satisfies Column<FeedRow>,
+          {
+            header: 'Total cost',
             cell: (r) => (r.cost != null ? naira(r.cost) : '—'),
           } satisfies Column<FeedRow>,
         ]
@@ -387,20 +636,26 @@ function FeedSection({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Quantity (kg)</Label>
+                    <Label>Quantity (bags)</Label>
                     <Input
                       type="number"
-                      value={form.quantityKg}
-                      onChange={(e) => setForm({ ...form, quantityKg: e.target.value })}
+                      min="0"
+                      value={form.quantityBags}
+                      onChange={(e) => setForm({ ...form, quantityBags: e.target.value })}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Cost (₦)</Label>
+                    <Label>Cost per bag (₦)</Label>
                     <Input
                       type="number"
-                      value={form.cost}
-                      onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                      min="0"
+                      value={form.costPerBag}
+                      onChange={(e) => setForm({ ...form, costPerBag: e.target.value })}
                     />
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-3 text-sm">
+                    <span className="text-muted-foreground">Total cost</span>
+                    <span className="font-semibold tabular-nums">{naira(totalCost)}</span>
                   </div>
                 </div>
                 <DialogFooter>
@@ -409,11 +664,11 @@ function FeedSection({
                       m.mutate({
                         date: form.date,
                         feedType: form.feedType || null,
-                        quantityKg: Number(form.quantityKg || 0),
-                        cost: Number(form.cost || 0),
+                        quantityBags: Number(form.quantityBags || 0),
+                        costPerBag: form.costPerBag ? Number(form.costPerBag) : undefined,
                       })
                     }
-                    disabled={m.isPending}
+                    disabled={Number(form.quantityBags) <= 0 || m.isPending}
                   >
                     {m.isPending && <Loader2 className="size-4 animate-spin" />}
                     Record

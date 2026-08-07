@@ -211,6 +211,8 @@ export const createSaleSchema = z.object({
   note: z.string().max(300).optional().nullable(),
   soldAt: z.coerce.date().optional(),
   subsidiaryId: z.string().optional().nullable(),
+  /** Payment/delivery proof attached when the sale is recorded. */
+  proofUrl: z.string().max(500).optional().nullable(),
 });
 export type CreateSaleDto = z.infer<typeof createSaleSchema>;
 
@@ -279,10 +281,26 @@ export const createFeedSchema = z.object({
   batchId: z.string().min(1),
   date: z.coerce.date(),
   feedType: z.string().max(120).optional().nullable(),
-  quantityKg: z.coerce.number().nonnegative(),
-  cost: z.coerce.number().nonnegative().optional(),
+  /** Feed is bought and counted in bags; total cost = bags × costPerBag. */
+  quantityBags: z.coerce.number().nonnegative(),
+  costPerBag: z.coerce.number().nonnegative().optional(),
 });
 export type CreateFeedDto = z.infer<typeof createFeedSchema>;
+
+export const createFarmDispatchSchema = z.object({
+  batchId: z.string().min(1),
+  date: z.coerce.date(),
+  /** Eggs (pieces) or birds processed, counted on the farm side. */
+  quantity: z.coerce.number().int().positive(),
+  /** Shop product the goods become; omit to record the dispatch only. */
+  productId: z.string().optional().nullable(),
+  variantId: z.string().optional().nullable(),
+  /** Units of the shop variant to add (e.g. crates); defaults to `quantity`. */
+  unitsAdded: z.coerce.number().int().positive().optional().nullable(),
+  destination: z.string().max(160).optional().nullable(),
+  note: z.string().max(300).optional().nullable(),
+});
+export type CreateFarmDispatchDto = z.infer<typeof createFarmDispatchSchema>;
 
 // ─── Crops ────────────────────────────────────────────────────────────────
 

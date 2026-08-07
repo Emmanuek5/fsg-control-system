@@ -293,6 +293,7 @@ model User {
   financialRequestsExecuted  FinancialRequest[]  @relation("FinancialRequestExecutor")
   requestComments            RequestComment[]
   notifications              Notification[]
+  farmDispatches             FarmDispatch[]
 
   @@map("users")
 }
@@ -362,10 +363,11 @@ model Product {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  variants      ProductVariant[]
-  movements     InventoryMovement[]
-  saleItems     SaleItem[]
-  stockRequests StockRequest[]
+  variants       ProductVariant[]
+  movements      InventoryMovement[]
+  saleItems      SaleItem[]
+  stockRequests  StockRequest[]
+  farmDispatches FarmDispatch[]
 
   @@map("products")
 }
@@ -396,9 +398,10 @@ model ProductVariant {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  movements     InventoryMovement[]
-  saleItems     SaleItem[]
-  stockRequests StockRequest[]
+  movements      InventoryMovement[]
+  saleItems      SaleItem[]
+  stockRequests  StockRequest[]
+  farmDispatches FarmDispatch[]
 
   @@unique([productId, name])
   @@index([productId])
@@ -426,6 +429,7 @@ model InventoryMovement {
   createdAt    DateTime      @default(now())
   stockRequest StockRequest?
   saleItem     SaleItem?
+  farmDispatch FarmDispatch?
 
   @@index([productId])
   @@index([variantId])
@@ -533,6 +537,7 @@ model FarmBatch {
   eggProduction    EggProduction[]
   mortalityRecords MortalityRecord[]
   feedRecords      FeedRecord[]
+  dispatches       FarmDispatch[]
 
   @@map("farm_batches")
 }
@@ -573,12 +578,51 @@ model FeedRecord {
   batch      FarmBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
   date       DateTime
   feedType   String?
+  /// Legacy records were counted in kg; new entries count bags and leave this 0.
   quantityKg Float     @default(0)
+  /// Feed is bought in bags: total cost = quantityBags × costPerBag.
+  quantityBags Float   @default(0)
+  costPerBag   Float?
   cost       Float     @default(0)
   createdAt  DateTime  @default(now())
 
   @@index([batchId])
   @@map("feed_records")
+}
+
+enum FarmDispatchType {
+  EGGS
+  BIRDS
+}
+
+/// Goods leaving a batch: eggs sent to the shop, or broilers processed and
+/// sent out for sale. When a shop product is linked, the dispatch posts an
+/// inventory movement IN so shop stock rises in the same transaction.
+model FarmDispatch {
+  id                  String             @id @default(cuid())
+  batchId             String
+  batch               FarmBatch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  type                FarmDispatchType
+  date                DateTime
+  /// Eggs (pieces) or birds, counted on the farm side.
+  quantity            Int
+  productId           String?
+  product             Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId           String?
+  variant             ProductVariant?    @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  /// Units of the shop variant added to stock (e.g. crates of 30).
+  unitsAdded          Int?
+  inventoryMovementId String?            @unique
+  inventoryMovement   InventoryMovement? @relation(fields: [inventoryMovementId], references: [id], onDelete: SetNull)
+  destination         String?
+  note                String?
+  createdById         String?
+  createdBy           User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt           DateTime           @default(now())
+
+  @@index([batchId])
+  @@index([date])
+  @@map("farm_dispatches")
 }
 
 model Crop {

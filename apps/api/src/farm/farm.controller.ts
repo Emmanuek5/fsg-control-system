@@ -3,12 +3,14 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   createEggProductionSchema,
   createFarmBatchSchema,
+  createFarmDispatchSchema,
   createFeedSchema,
   createMortalitySchema,
   updateFarmBatchSchema,
   type BatchType,
   type CreateEggProductionDto,
   type CreateFarmBatchDto,
+  type CreateFarmDispatchDto,
   type CreateFeedDto,
   type CreateMortalityDto,
   type UpdateFarmBatchDto,
@@ -91,5 +93,20 @@ export class FarmController {
   @RequirePermissions('farm:create')
   createFeed(@Body(new ZodValidationPipe(createFeedSchema)) dto: CreateFeedDto) {
     return this.farm.createFeed(dto);
+  }
+
+  @Get('batches/:id/dispatches')
+  @RequirePermissions('farm:read')
+  listDispatches(@Param('id') id: string) {
+    return this.farm.listDispatches(id);
+  }
+
+  @Post('dispatch')
+  @RequirePermissions('farm:create')
+  createDispatch(
+    @Body(new ZodValidationPipe(createFarmDispatchSchema)) dto: CreateFarmDispatchDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.farm.createDispatch(dto, user);
   }
 }

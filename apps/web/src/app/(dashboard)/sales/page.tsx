@@ -499,6 +499,7 @@ function SaleDialog({
     note: '',
     soldAt: '',
     subsidiaryId: defaultSubsidiary,
+    proofUrl: null as string | null,
   });
 
   const resetForm = () => {
@@ -511,6 +512,7 @@ function SaleDialog({
       note: '',
       soldAt: '',
       subsidiaryId: defaultSubsidiary,
+      proofUrl: null,
     });
   };
 
@@ -552,6 +554,7 @@ function SaleDialog({
         note: form.note.trim() || null,
         soldAt: form.soldAt || undefined,
         subsidiaryId: form.subsidiaryId || null,
+        proofUrl: form.proofUrl,
       }),
     onSuccess: async () => {
       toast.success('Sale recorded');
@@ -771,6 +774,15 @@ function SaleDialog({
               maxLength={300}
               onChange={(e) => setForm({ ...form, note: e.target.value })}
               placeholder="Optional"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Payment proof</Label>
+            <FileUpload
+              accept="image/*,application/pdf"
+              value={form.proofUrl}
+              onChange={(url) => setForm({ ...form, proofUrl: url })}
+              label="Upload proof of payment"
             />
           </div>
         </div>
