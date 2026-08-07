@@ -14,6 +14,7 @@ import { ExportButton } from '@/components/export-button';
 import { FileUpload } from '@/components/file-upload';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
@@ -195,17 +196,17 @@ function MovementDialog({ products }: { products: ProductOpt[] }) {
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Product</Label>
-            <Select
+            <Combobox
+              aria-label="Product"
               value={form.sellableKey}
-              onChange={(e) => setForm({ ...form, sellableKey: e.target.value })}
-            >
-              <option value="">Select a product…</option>
-              {sellables.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label} ({num(option.available)} available)
-                </option>
-              ))}
-            </Select>
+              onChange={(key) => setForm({ ...form, sellableKey: key })}
+              options={sellables.map((option) => ({
+                value: option.key,
+                label: option.label,
+                hint: `${num(option.available)} available`,
+              }))}
+              placeholder="Select a product…"
+            />
             {selected && (
               <p className="text-xs text-muted-foreground">
                 Quantities are counted in units of “{selected.label.split(' — ')[1] ?? 'this item'}”.

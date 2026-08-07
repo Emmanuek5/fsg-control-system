@@ -34,6 +34,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
@@ -638,29 +639,26 @@ function SaleDialog({
                   className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_90px_120px_auto] sm:items-start"
                 >
                   <div className="space-y-1">
-                    <Select
+                    <Combobox
                       value={row.line.sellableKey}
-                      onChange={(e) => {
-                        const option = sellableByKey.get(e.target.value);
+                      onChange={(key) => {
+                        const option = sellableByKey.get(key);
                         updateLine(index, {
-                          sellableKey: e.target.value,
+                          sellableKey: key,
                           unitPrice: option ? String(option.unitPrice) : '',
                         });
                       }}
                       disabled={productsLoading}
                       aria-label={`Product ${index + 1}`}
-                    >
-                      <option value="">
-                        {productsLoading ? 'Loading products…' : 'Select a product…'}
-                      </option>
-                      {sellables
+                      placeholder={productsLoading ? 'Loading products…' : 'Select a product…'}
+                      options={sellables
                         .filter((option) => !taken.has(option.key))
-                        .map((option) => (
-                          <option key={option.key} value={option.key}>
-                            {option.label} ({num(option.available)} available)
-                          </option>
-                        ))}
-                    </Select>
+                        .map((option) => ({
+                          value: option.key,
+                          label: option.label,
+                          hint: `${num(option.available)} available`,
+                        }))}
+                    />
                     {row.option && (
                       <p
                         className={

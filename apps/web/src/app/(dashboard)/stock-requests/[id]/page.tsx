@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, Loader2, MessageSquare, X } from 'lucide-react';
+import { ArrowLeft, Check, Loader2, MessageSquare, Pencil, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ApprovalStatus, MovementType } from '@fsg/shared';
 import { api, ApiError } from '@/lib/api';
@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/auth-context';
 import { fmtDateTime, naira, num } from '@/lib/format';
 import { movementLabel, statusLabel, statusVariant } from '@/lib/approval';
 import { PageHeader } from '@/components/page-header';
+import { StockRequestDialog } from '@/components/stock-request-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,7 +44,7 @@ interface StockRequest {
 
 export default function StockRequestDetailPage() {
   const params = useParams<{ id: string }>();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const qc = useQueryClient();
   const requestQ = useQuery({ queryKey: ['stock-request', params.id], queryFn: () => api.get<StockRequest>(`/stock-requests/${params.id}`) });
   const request = requestQ.data;
@@ -71,11 +72,28 @@ export default function StockRequestDetailPage() {
 
   if (requestQ.isLoading || !request) return <div className="p-8 text-sm text-muted-foreground">Loading request...</div>;
   const pending = request.status === 'PENDING';
+  // Same rule as the PATCH endpoint: the requester (or an approver) may edit
+  // while the request is still pending or waiting on more info. Editing a
+  // needs-info request resets it to pending, which is the resubmit path.
+  const editable =
+    (pending || request.status === 'NEEDS_INFO') &&
+    can('stock_requests:create') &&
+    (request.requestedBy?.id === user?.id || can('stock_requests:approve'));
 
   return (
     <div>
       <PageHeader title="Stock Request" description={`${request.product.name} · ${movementLabel[request.type]}`}>
         <Button variant="outline" asChild><Link href="/stock-requests"><ArrowLeft className="size-4" /> Back</Link></Button>
+        {editable && (
+          <StockRequestDialog
+            request={request}
+            trigger={
+              <Button variant={request.status === 'NEEDS_INFO' ? 'default' : 'outline'}>
+                <Pencil className="size-4" /> {request.status === 'NEEDS_INFO' ? 'Edit & resubmit' : 'Edit request'}
+              </Button>
+            }
+          />
+        )}
         {can('stock_requests:approve') && pending && (
           <>
             <DecisionDialog title="Approve request" action="approve" icon={<Check className="size-4" />} onSubmit={(note) => decide.mutate({ action: 'approve', note })} pending={decide.isPending} />
