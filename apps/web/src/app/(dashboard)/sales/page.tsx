@@ -11,6 +11,7 @@ import {
   ReceiptText,
   ShieldAlert,
   Trash2,
+  TrendingUp,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -101,6 +102,9 @@ interface SalesSummary {
   todayCount: number;
   monthTotal: number;
   unverifiedToday: number;
+  /** Margin on goods sold; null when the viewer lacks finance:read. */
+  profitToday: number | null;
+  profitMonth: number | null;
 }
 
 interface SalesDaySummary {
@@ -362,6 +366,15 @@ export default function SalesPage() {
           accent="primary"
           loading={summaryQ.isLoading}
         />
+        {summary?.profitToday != null && (
+          <KpiCard
+            title="Profit today"
+            value={naira(summary.profitToday)}
+            icon={TrendingUp}
+            accent="sage"
+            loading={summaryQ.isLoading}
+          />
+        )}
         <KpiCard
           title="Sales this month"
           value={naira(summary?.monthTotal)}
@@ -369,6 +382,15 @@ export default function SalesPage() {
           accent="gold"
           loading={summaryQ.isLoading}
         />
+        {summary?.profitMonth != null && (
+          <KpiCard
+            title="Profit this month"
+            value={naira(summary.profitMonth)}
+            icon={TrendingUp}
+            accent="sage"
+            loading={summaryQ.isLoading}
+          />
+        )}
         <KpiCard
           title="Transactions today"
           value={num(summary?.todayCount)}

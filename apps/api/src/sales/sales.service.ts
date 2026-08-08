@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type {
   CreateSaleDto,
   SaleChannel,
@@ -6,6 +7,7 @@ import type {
   VerifySalesDayDto,
 } from '@fsg/shared';
 import { claimStock, effectiveUnitPrice, releaseStock, resolveStock } from '../inventory/stock';
+import { PermissionsService } from '../auth/permissions.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const include = {
@@ -33,7 +35,10 @@ interface SalesFilters {
 
 @Injectable()
 export class SalesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissions: PermissionsService,
+  ) {}
 
   /**
    * Shared by the list and the per-section breakdown, so a filtered table and
@@ -112,7 +117,24 @@ export class SalesService {
       .sort((a, b) => b.revenue - a.revenue);
   }
 
-  async summary(subsidiaryId?: string) {
+  /**
+   * Margin on goods sold in the window: Σ(lineTotal − quantity × unitCost),
+   * from costs snapshotted at sale time. Logistics fees are excluded — they
+   * are pass-through charges, not margin.
+   */
+  private async profitBetween(start: Date, end: Date | null, subsidiaryId?: string) {
+    const rows = await this.prisma.$queryRaw<{ profit: number }[]>`
+      SELECT COALESCE(SUM(si."lineTotal" - si."quantity" * si."unitCost"), 0)::float AS profit
+      FROM "sale_items" si
+      JOIN "sales" s ON s."id" = si."saleId"
+      WHERE s."soldAt" >= ${start}
+        ${end ? Prisma.sql`AND s."soldAt" < ${end}` : Prisma.empty}
+        ${subsidiaryId ? Prisma.sql`AND s."subsidiaryId" = ${subsidiaryId}` : Prisma.empty}
+    `;
+    return rows[0]?.profit ?? 0;
+  }
+
+  async summary(user: { roleId: string | null }, subsidiaryId?: string) {
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
@@ -122,21 +144,30 @@ export class SalesService {
     const scope = subsidiaryId ? { subsidiaryId } : {};
     const todayWhere = { ...scope, soldAt: { gte: startOfDay, lt: nextDay } };
 
-    const [today, todayCount, month, unverifiedToday] = await Promise.all([
-      this.prisma.sale.aggregate({ _sum: { totalAmount: true }, where: todayWhere }),
-      this.prisma.sale.count({ where: todayWhere }),
-      this.prisma.sale.aggregate({
-        _sum: { totalAmount: true },
-        where: { ...scope, soldAt: { gte: startOfMonth } },
-      }),
-      this.prisma.sale.count({ where: { ...todayWhere, verifiedAt: null } }),
-    ]);
+    // Profit exposes cost prices, so it follows the same finance:read gate
+    // that hides feed costs and the like elsewhere.
+    const seesFinance = await this.permissions.roleHas(user.roleId, 'finance:read');
+
+    const [today, todayCount, month, unverifiedToday, profitToday, profitMonth] =
+      await Promise.all([
+        this.prisma.sale.aggregate({ _sum: { totalAmount: true }, where: todayWhere }),
+        this.prisma.sale.count({ where: todayWhere }),
+        this.prisma.sale.aggregate({
+          _sum: { totalAmount: true },
+          where: { ...scope, soldAt: { gte: startOfMonth } },
+        }),
+        this.prisma.sale.count({ where: { ...todayWhere, verifiedAt: null } }),
+        seesFinance ? this.profitBetween(startOfDay, nextDay, subsidiaryId) : null,
+        seesFinance ? this.profitBetween(startOfMonth, null, subsidiaryId) : null,
+      ]);
 
     return {
       todayTotal: today._sum.totalAmount ?? 0,
       todayCount,
       monthTotal: month._sum.totalAmount ?? 0,
       unverifiedToday,
+      profitToday,
+      profitMonth,
     };
   }
 
@@ -192,6 +223,7 @@ export class SalesService {
         unit: string;
         quantity: number;
         unitPrice: number;
+        unitCost: number;
         lineTotal: number;
         inventoryMovementId: string;
       }[] = [];
@@ -223,6 +255,9 @@ export class SalesService {
         });
 
         const unitPrice = item.unitPrice ?? effectiveUnitPrice(resolved);
+        // Cost mirrors price resolution: the variant's own cost when priced,
+        // else the product-level cost.
+        const unitCost = variant.costPrice > 0 ? variant.costPrice : product.costPrice;
         lines.push({
           productId: product.id,
           variantId: variant.id,
@@ -231,6 +266,7 @@ export class SalesService {
           unit: product.unit,
           quantity: item.quantity,
           unitPrice,
+          unitCost,
           lineTotal: item.quantity * unitPrice,
           inventoryMovementId: movement.id,
         });

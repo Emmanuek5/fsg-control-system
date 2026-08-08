@@ -48,8 +48,8 @@ export class SalesController {
 
   @Get('summary')
   @RequirePermissions('sales:read')
-  summary(@Query('subsidiaryId') subsidiaryId?: string) {
-    return this.sales.summary(subsidiaryId);
+  summary(@CurrentUser() user: RequestUser, @Query('subsidiaryId') subsidiaryId?: string) {
+    return this.sales.summary(user, subsidiaryId);
   }
 
   @Get('day-summary')

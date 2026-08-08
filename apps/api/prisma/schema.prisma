@@ -485,6 +485,9 @@ model SaleItem {
   unit                String             @default("pcs")
   quantity            Int
   unitPrice           Float
+  /// Cost per unit captured at sale time (variant cost, falling back to the
+  /// product's), so profit figures survive later cost-price edits.
+  unitCost            Float              @default(0)
   lineTotal           Float
   inventoryMovementId String?            @unique
   inventoryMovement   InventoryMovement? @relation(fields: [inventoryMovementId], references: [id], onDelete: SetNull)
